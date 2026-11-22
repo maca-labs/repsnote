@@ -3,6 +3,7 @@ import * as C from './core.js';
 import { calorieHistoryChart } from './calorie-history.js';
 import {editedWeightKg, weightPresets} from './workout-input.js';
 import { buildAiPrompt } from './ai-prompt.js';
+import { monthlyShareReport, drawMonthlySummary } from './month-share.js';
 import { createInstallController } from './install.js';
 import {
   cardEntryHeight, cardRowHeight, currentWeightLabel, planNutritionLines, setDetails, sharedWorkout,
@@ -325,7 +326,9 @@ function renderFood(){const list=state.meals[day]??[],t=C.mealTotals(list);retur
 function renderBody(){const plan=state.plan,ps=C.planStats(plan,state.body,today),body=[...state.body].sort((a,b)=>b.date.localeCompare(a.date)),latest=body.filter(b=>b.date<=today)[0];return `<div class="layout"><section class="main-col"><div class="workout-hero"><div><div class="eyebrow">BODY LOG</div><div class="hero-title">${plan?(plan.targetWeight<plan.startWeight?'減量プラン':plan.targetWeight>plan.startWeight?'増量プラン':'体重維持プラン'):'体重の記録'}</div>${plan?`<p>${dateLabel(plan.startDate)} — ${dateLabel(plan.targetDate)}</p>`:''}</div></div><div class="metric-grid"><div class="metric"><div class="label">スタート</div><div class="value">${plan?nf(plan.startWeight):'—'}<span>kg</span></div></div><div class="metric"><div class="label">現在の体重</div><div class="value">${latest?nf(latest.kg):'—'}<span>kg</span></div></div><div class="metric"><div class="label">目標体重</div><div class="value">${plan?nf(plan.targetWeight):'—'}<span>kg</span></div></div></div><section class="panel"><div class="panel-heading"><h2>体重の推移</h2>${btn('add-body','体重を記録','plus','primary')}</div>${bodyChart()}<div class="chart-legend"><span>実際の記録</span><span>計画上のライン</span></div></section><div class="section-heading"><h2>からだの記録</h2><small>体重はkgで記録</small></div><section class="panel">${body.length?body.map(b=>`<div class="body-entry"><div>${dateLabel(b.date,true)}<small>${b.bodyFat!=null?`体脂肪率 ${nf(b.bodyFat)}%`:'体脂肪率の記録なし'}</small></div><div class="row"><strong>${nf(b.kg)} <small style="display:inline">kg</small></strong>${ib('edit-body','体重の記録を訂正','edit',`data-date="${b.date}"`)}</div></div>`).join(''):`<div class="empty">${icon('chart')}<h3>変化を記録しよう</h3><p>体重と、任意で体脂肪率を記録できます。</p></div>`}</section></section><aside class="side-col"><section class="panel"><div class="panel-heading"><h2>ボディメイク計画</h2>${icon('target')}</div>${plan?`<div class="pill">${plan.targetWeight<plan.startWeight?'減量':plan.targetWeight>plan.startWeight?'増量':'体重維持'}プラン</div><div class="stat-line"><span>開始</span><strong>${dateLabel(plan.startDate)}</strong></div><div class="stat-line"><span>目標日</span><strong>${dateLabel(plan.targetDate)}</strong></div><div class="stat-line"><span>計画上のペース</span><strong>${ps.weekly>0?'+':''}${nf(ps.weekly,2)} kg/週</strong></div><div class="stat-line"><span>目標日まで</span><strong>${ps.remainingDays} 日</strong></div><div class="progress-row"><div class="progress-info"><span>目標への進み具合</span><strong>${nf(ps.progress,0)}%</strong></div><div class="progress-track"><div class="progress-fill" style="width:${ps.progress}%"></div></div></div><p class="mini-subtitle" style="margin-top:14px">計画線は開始と目標を結んだ目安です。体重の変化を予測・保証するものではありません。</p>`:'<p class="mini-subtitle">スタートと目標、期間を決めて、実際の記録と見比べられます。</p>'}${btn('edit-plan',plan?'計画・PFC目標を編集':'計画をつくる','edit','full')}${btn('share-plan','計画をシェア','share','full ghost')}</section>${nutritionPanel()}</aside></div>`;}
 function bodyChart(){const p=state.plan,bs=state.body.filter(b=>b.date<=today).sort((a,b)=>a.date.localeCompare(b.date));if(!bs.length&&!p)return `<div class="empty">${icon('chart')}<p>体重を記録すると、ここにグラフが表示されます。</p></div>`;const dates=[...bs.map(b=>b.date),...(p?[p.startDate,p.targetDate]:[])].sort(),start=dates[0],end=dates.at(-1),span=Math.max(1,C.daysBetween(start,end));const weights=[...bs.map(b=>b.kg),...(p?[p.startWeight,p.targetWeight]:[])],min=Math.floor(Math.min(...weights)-.5),max=Math.ceil(Math.max(...weights)+.5),xp=d=>52+C.daysBetween(start,d)/span*550,yp=kg=>210-(kg-min)/(max-min)*170;return `<svg class="chart" viewBox="0 0 630 260" role="img" aria-label="体重推移グラフ。実測値は下のからだの記録に掲載。計画線は目標日までの直線。">${Array.from({length:5},(_,i)=>{const val=min+(max-min)/4*i,y=yp(val);return `<line x1="52" x2="602" y1="${y}" y2="${y}" stroke="#e2e2e2" stroke-dasharray="4 5"/><text x="43" y="${y+4}" text-anchor="end" font-size="12" fill="#686868">${nf(val)}</text>`;}).join('')}<text x="9" y="21" font-size="11" fill="#686868">kg</text>${p?`<path d="M${xp(p.startDate)},${yp(p.startWeight)} L${xp(p.targetDate)},${yp(p.targetWeight)}" stroke="#777777" stroke-width="2" stroke-dasharray="6 6" fill="none"/>`:''}${bs.length?`<path d="M${bs.map(b=>`${xp(b.date)},${yp(b.kg)}`).join(' L')}" fill="none" stroke="#252525" stroke-width="3" stroke-linejoin="round"/>${bs.map(b=>`<circle cx="${xp(b.date)}" cy="${yp(b.kg)}" r="4" fill="#252525" stroke="white" stroke-width="2"><title>${b.date}：${b.kg}kg</title></circle>`).join('')}`:''}<text x="52" y="242" font-size="12" fill="#686868">${dateLabel(start)}</text><text x="602" y="242" text-anchor="end" font-size="12" fill="#686868">${dateLabel(end)}</text></svg>`;}
 function renderRecords(){const prs=Object.values(C.records(state)).filter(p=>prGroup==='すべて'||exercise(p.exerciseId).group===prGroup).sort((a,b)=>b.date.localeCompare(a.date));return `<div class="pr-intro"><div><div class="eyebrow">PERSONAL BEST</div><h2>種目別の最高重量</h2><p>補助なしで完了したメインセットを集計します。</p></div>${icon('crown')}</div><div class="between"><h2>自己ベスト <span class="muted" style="font-weight:400;font-size:15px">${Object.keys(C.records(state)).length} 種目</span></h2>${btn('record-info','集計ルール','','ghost')}</div><div class="filter-row">${['すべて','胸','背中','肩','腕','脚','体幹'].map(g=>`<button class="chip ${prGroup===g?'active':''}" data-action="pr-group" data-group="${g}">${g}</button>`).join('')}</div><div class="wide-grid">${prs.map(p=>{const e=exercise(p.exerciseId),u=exerciseUnit(e.id);return `<article class="panel pr-card">${icon('crown')}<span class="pill">${h(e.group)} · ${h(e.equipment)}</span><h3>${h(e.name)}</h3><div class="pr-number">${weight(p.kg,u)}<span>${u} × ${p.reps} 回</span></div><div class="small">${h(shortLoad(e))} · ${dateLabel(p.date,true)}</div><button class="text-button" data-action="edit-record" data-date="${p.date}" data-id="${h(p.id)}">${icon('edit')} 元の記録を訂正する</button></article>`;}).join('')}</div>${!prs.length?`<div class="panel empty">${icon('crown')}<h3>自己ベストはここに並びます</h3><p>ウォームアップ・補助ありを除く、完了したセットの最高重量を集計します。</p>${btn('nav-workout','トレーニングを記録','plus','primary')}</div>`:''}<div class="small" style="margin-top:22px">同じ重量では回数が多いセットを表示。自重種目の0kgは追加重量なしを意味します。異なるマシンはカスタム種目を分けて記録してください。</div>`;}
-function renderHistory(){const start=`${month}-01`,startDow=C.parseDay(start).getDay(),gridStart=C.shiftDay(start,-((startDow+6)%7));const dates=Object.keys(state.workouts).filter(d=>state.workouts[d].exercises.length).sort().reverse(),monthDates=dates.filter(d=>d.startsWith(month)),monthSets=monthDates.reduce((n,d)=>n+C.workoutStats(state.workouts[d]).sets,0);return `<div class="layout"><section class="main-col"><section class="panel"><div class="panel-heading"><h2>${Number(month.slice(0,4))}年 ${Number(month.slice(5))}月</h2><div class="row">${btn('previous-month','前月','','ghost')}${btn('next-month','翌月','','ghost')}</div></div><div class="calendar">${['月','火','水','木','金','土','日'].map(d=>`<div class="weekday">${d}</div>`).join('')}${Array.from({length:42},(_,i)=>{const d=C.shiftDay(gridStart,i),st=C.workoutStats(state.workouts[d]);return `<button class="calendar-day ${d.slice(0,7)===month?'':'outside'} ${d===day?'active':''}" data-action="history-date" data-date="${d}" aria-label="${dateLabel(d)}、筋トレ${st.sets}セット、食事${(state.meals[d]??[]).length}件"><span>${C.parseDay(d).getDate()}</span><span class="day-marks">${st.sets?'<span></span>':''}${(state.meals[d]??[]).length?'<span class="food-dot"></span>':''}</span></button>`;}).join('')}</div><div class="small" style="margin-top:16px">● 完了した筋トレ　○ 食事記録</div></section><div class="section-heading"><h2>最近のトレーニング</h2><span class="small">タップして確認・訂正</span></div><section class="panel">${dates.length?dates.map(d=>{const w=state.workouts[d],st=C.workoutStats(w);return `<button class="history-item" data-action="history-date" data-date="${d}"><div><h3>${h(w.title)} <span class="pill">${catalogGroups(w)}</span></h3><small>${dateLabel(d,true)} · ${st.exercises}種目 / ${st.sets}セット完了</small></div><div class="history-score">${weight(st.volume,unit(),0)} ${unit()}</div></button>`;}).join(''):'<div class="empty">まだ記録がありません。</div>'}</section></section><aside class="side-col"><section class="panel"><div class="panel-heading"><h2>今月の記録</h2>${icon('calendar')}</div><div class="stat-line"><span>トレーニングした日</span><strong>${monthDates.filter(d=>C.workoutStats(state.workouts[d]).sets>0).length} 日</strong></div><div class="stat-line"><span>完了したセット</span><strong>${monthSets} セット</strong></div><div class="stat-line"><span>食事を記録した日</span><strong>${Object.keys(state.meals).filter(d=>d.startsWith(month)&&state.meals[d].length).length} 日</strong></div></section>${highlightPanel(C.records(state))}</aside></div>`;}
+function renderHistory(){const start=`${month}-01`,startDow=C.parseDay(start).getDay(),gridStart=C.shiftDay(start,-((startDow+6)%7));const dates=Object.keys(state.workouts).filter(d=>state.workouts[d].exercises.length).sort().reverse();
+  const summary=C.monthlySummary(state,month);
+  return `<div class="layout"><section class="main-col"><section class="panel"><div class="panel-heading"><h2>${Number(month.slice(0,4))}年 ${Number(month.slice(5))}月</h2><div class="row">${btn('previous-month','前月','','ghost')}${btn('next-month','翌月','','ghost')}</div></div><div class="calendar">${['月','火','水','木','金','土','日'].map(d=>`<div class="weekday">${d}</div>`).join('')}${Array.from({length:42},(_,i)=>{const d=C.shiftDay(gridStart,i),st=C.workoutStats(state.workouts[d]);return `<button class="calendar-day ${d.slice(0,7)===month?'':'outside'} ${d===day?'active':''}" data-action="history-date" data-date="${d}" aria-label="${dateLabel(d)}、完了した記録${st.sets}件、食事${(state.meals[d]??[]).length}件"><span>${C.parseDay(d).getDate()}</span><span class="day-marks">${st.sets?'<span></span>':''}${(state.meals[d]??[]).length?'<span class="food-dot"></span>':''}</span></button>`;}).join('')}</div><div class="history-calendar-footer"><span class="small">● トレーニング　○ 食事記録</span>${btn('share-month','月間まとめをシェア','share','primary')}</div></section><div class="section-heading"><h2>最近のトレーニング</h2><span class="small">タップして確認・訂正</span></div><section class="panel">${dates.length?dates.map(d=>{const w=state.workouts[d],st=C.workoutStats(w);return `<button class="history-item" data-action="history-date" data-date="${d}"><div><h3>${h(w.title)} <span class="pill">${catalogGroups(w)}</span></h3><small>${dateLabel(d,true)} · ${st.exercises}種目 / ${st.sets}セット完了</small></div><div class="history-score">${weight(st.volume,unit(),0)} ${unit()}</div></button>`;}).join(''):'<div class="empty">まだ記録がありません。</div>'}</section></section><aside class="side-col"><section class="panel"><div class="panel-heading"><h2>${Number(month.slice(5))}月の記録</h2>${icon('calendar')}</div><div class="stat-line"><span>トレーニングした日</span><strong>${summary.trainingDays} 日</strong></div><div class="stat-line"><span>筋トレ完了セット</span><strong>${summary.strengthSets} セット</strong></div><div class="stat-line"><span>自己ベスト更新</span><strong>${summary.updatedExercises} 種目</strong></div>${summary.cardioSessions?`<div class="stat-line"><span>有酸素</span><strong>${nf(summary.cardioMinutes,2)} 分</strong></div>`:''}<div class="stat-line"><span>食事を記録した日</span><strong>${summary.mealDays} 日</strong></div></section>${highlightPanel(C.records(state))}</aside></div>`;}
 
 function openDialog(title,body,subtitle=''){modal.innerHTML=`<header class="modal-head"><div>${subtitle?`<div class="eyebrow">${h(subtitle)}</div>`:''}<h2 id="modal-title">${h(title)}</h2></div>${ib('close','閉じる','close')}</header><div class="modal-content">${body}</div>`;modal.onsubmit=null;if(!modal.open)modal.showModal();modal.scrollTop=0;}
 const inputField=(name,label,value='',attrs='',cls='')=>`<div class="field ${cls}"><label for="field-${name}">${h(label)}</label><input id="field-${name}" name="${name}" value="${h(value)}" ${attrs}></div>`;
@@ -504,14 +507,29 @@ setInterval(async ()=>{
   }finally{finishingTimer=false;}
 },500);
 function celebrate(ex,s,first=false){const u=exerciseUnit(ex.id);const root=document.querySelector('#celebration');root.innerHTML=`<div class="crown-pop">${icon('crown')}<h2>${first?'はじめの記録！':'自己ベスト更新！'}</h2><p>${h(ex.name)}<br><strong>${weight(s.kg,u)} ${u} × ${s.reps} 回</strong> · ${h(shortLoad(ex))}</p></div>${Array.from({length:12},(_,i)=>`<i class="confetti" style="--r:${i*30}deg;--x:${Math.cos(i*Math.PI/6)*170}px;--y:${Math.sin(i*Math.PI/6)*140+80}px;background:${['#444444','#858585','#cacaca'][i%3]}"></i>`).join('')}`;setTimeout(()=>{root.innerHTML='';},2400);}
-const shareWeightsByKind = {workout:true, food:true, plan:false};
+const shareWeightsByKind = {workout:true, food:true, plan:false, month:false};
+let shareMonth, shareMonthSummary;
 let sharePrefs={kind:'workout',format:'square',theme:'dark',date:true,weights:true,caption:''},shareBlob=null,shareRevision=0;
-function shareDialog(kind=null){sharePrefs.kind=kind??(view==='food'?'food':view==='body'?'plan':'workout');sharePrefs.weights=shareWeightsByKind[sharePrefs.kind];openDialog('記録をシェア',`<div class="share-layout"><div><div class="share-preview"><canvas id="share-canvas" aria-label="共有画像のプレビュー"></canvas></div><div class="share-caption">${mode==='demo'?'画像にも「SAMPLE」を表示します。':'保存前に、公開してよい内容か確認できます。'}</div></div><div class="share-controls">${selectField('share-kind','シェアする内容',[['workout','トレーニング'],['food','食事・PFC'],['plan','ボディメイク計画']],sharePrefs.kind)}${selectField('share-format','画像サイズ',[['square','正方形 1:1'],['portrait','投稿向け 4:5'],['story','ストーリー 9:16']],sharePrefs.format)}${selectField('share-theme','デザイン',[['dark','ブラック'],['light','ホワイト']],sharePrefs.theme)}${inputField('share-caption','ひとこと（任意）',sharePrefs.caption,'maxlength="60" placeholder="記録に添えるコメント"')}<label class="checkbox-row"><input name="share-date" type="checkbox" ${sharePrefs.date?'checked':''}>日付を表示</label><label class="checkbox-row"><input name="share-weights" type="checkbox" ${sharePrefs.weights?'checked':''}>重量・体重を表示</label>${btn('share-native','SNSに共有','share','primary share-full')}${btn('share-download','画像を保存','download','share-full')}${btn('share-copy','投稿文をコピー','copy','share-full')}</div></div><textarea class="share-text" id="share-text" aria-label="投稿文・自由に編集できます"></textarea><p class="share-caption">SNSへの送信は端末の共有画面から選べます。対応していないブラウザでは、画像を保存して添付してください。</p>`);drawShare();}
-function shareContentText() {
-  const date = sharePrefs.date ? dateLabel(sharePrefs.kind === 'plan' ? today : day,true)+'\n' : '';
+function shareDialog(kind=null){
+  shareMonth=view==='history'?month:day.slice(0,7);
+  shareMonthSummary=null;
+  sharePrefs.kind=kind??({food:'food', body:'plan', history:'month'}[view]??'workout');
+  sharePrefs.weights=shareWeightsByKind[sharePrefs.kind];
+  openDialog('記録をシェア',`<div class="share-layout"><div><div class="share-preview"><canvas id="share-canvas" aria-label="共有画像のプレビュー"></canvas></div><div class="share-caption">${mode==='demo'?'画像にも「SAMPLE」を表示します。':'保存前に、公開してよい内容か確認できます。'}</div></div><div class="share-controls">${selectField('share-kind','シェアする内容',[['workout','トレーニング'],['food','食事・PFC'],['plan','ボディメイク計画'],['month','月間まとめ']],sharePrefs.kind)}${selectField('share-format','画像サイズ',[['square','正方形 1:1'],['portrait','投稿向け 4:5'],['story','ストーリー 9:16']],sharePrefs.format)}${selectField('share-theme','デザイン',[['dark','ブラック'],['light','ホワイト']],sharePrefs.theme)}${inputField('share-caption','ひとこと（任意）',sharePrefs.caption,'maxlength="60" placeholder="記録に添えるコメント"')}<label class="checkbox-row"><input name="share-date" type="checkbox" ${sharePrefs.date?'checked':''}>日付を表示</label><label class="checkbox-row"><input name="share-weights" type="checkbox" ${sharePrefs.weights?'checked':''}>重量・体重を表示</label>${btn('share-native','SNSに共有','share','primary share-full')}${btn('share-download','画像を保存','download','share-full')}${btn('share-copy','投稿文をコピー','copy','share-full')}</div></div><textarea class="share-text" id="share-text" aria-label="投稿文・自由に編集できます"></textarea><p class="share-caption">SNSへの送信は端末の共有画面から選べます。対応していないブラウザでは、画像を保存して添付してください。</p>`);drawShare();}
+function workoutShareReport(){
+  return sharedWorkout(getWorkout(), exercise, sharePrefs.weights, describeSet, C.recordUpdateCount(state, day));
+}
+function selectedMonthReport() {
+  shareMonthSummary ??= C.monthlySummary(state, shareMonth);
+  return monthlyShareReport(shareMonthSummary, unit(), sharePrefs.weights, sharePrefs.date);
+}
+function shareContentText(report) {
+  const date = sharePrefs.date && sharePrefs.kind !== 'month' ? dateLabel(sharePrefs.kind === 'plan' ? today : day,true)+'\n' : '';
   let lines;
   if (sharePrefs.kind === 'workout') {
-    lines = sharedWorkout(getWorkout(), exercise, sharePrefs.weights, describeSet).textLines;
+    lines = (report ?? workoutShareReport()).textLines;
+  } else if (sharePrefs.kind === 'month') {
+    lines = (report ?? selectedMonthReport()).textLines;
   } else if (sharePrefs.kind === 'food') {
     const t = C.mealTotals(state.meals[day]);
     lines = [`食事記録 ${nf(t.kcal,0)}kcal`, `P ${nf(t.p)}g / F ${nf(t.f)}g / C ${nf(t.c)}g`];
@@ -574,26 +592,27 @@ function drawShare() {
     label(unitLabel, x, y+42, 23, secondary, true, max);
   }
 
+  const kind = sharePrefs.kind;
+  const log = kind === 'workout' ? workoutShareReport() : kind === 'month' ? selectedMonthReport() : null;
   const brandY = 102 + Math.round(room * .03);
   label('REPS NOTE', left, brandY, 46, ink, true);
   if (sharePrefs.date) {
-    const date = sharePrefs.kind === 'plan' ? today : day;
-    label(dateLabel(date,true), right, brandY-4, 25, secondary, false, 490, 'right');
+    const date = kind === 'month' ? log.dateLabel : dateLabel(kind === 'plan' ? today : day,true);
+    label(date, right, brandY-4, 25, secondary, false, 490, 'right');
   }
   divider(brandY + 30, ink, 4);
   const headingY = 270 + Math.round(room * .10);
-  const kind = sharePrefs.kind;
-  const category = {workout:'TRAINING LOG',food:'NUTRITION LOG',plan:'BODY PLAN'}[kind];
+  const category = {workout:'TRAINING LOG',food:'NUTRITION LOG',plan:'BODY PLAN',month:'MONTHLY SUMMARY'}[kind];
   label(category, left, headingY-73, 23, secondary, true);
   if (mode === 'demo') label('SAMPLE', right, headingY-73, 23, secondary, true, 200, 'right');
-  const title = kind === 'workout' ? getWorkout().title : kind === 'food' ? '食事記録' : 'ボディメイク計画';
+  const title = kind === 'workout' ? getWorkout().title : kind === 'month' ? log.title : kind === 'food' ? '食事記録' : 'ボディメイク計画';
   label(title, left, headingY+8, 76, ink, true);
   let y = headingY + 80 + Math.round(room * .05);
 
   if (kind === 'workout') {
     const workout = getWorkout();
     const stats = C.workoutStats(workout);
-    const log = sharedWorkout(workout, exercise, sharePrefs.weights, describeSet);
+    label(log.recordUpdateLabel, left, headingY+54, 30, ink, true);
     const count = log.strengthSets + log.cardioSessions;
     const metrics = [
       [count, log.cardioSessions ? (log.strengthSets ? '完了した記録' : '有酸素の記録') : '完了セット'],
@@ -623,6 +642,8 @@ function drawShare() {
     }
     if (remainder) label(remainder, left, y+32, 25, secondary);
     if (!count) label('完了した記録はありません', left, y+48, 31, secondary);
+  } else if (kind === 'month') {
+    drawMonthlySummary(log, {label,metric,divider,left,right,width,y,contentEnd,ink,secondary,room});
   } else if (kind === 'food') {
     const entries = state.meals[day] ?? [];
     const totals = C.mealTotals(entries);
@@ -683,7 +704,7 @@ function drawShare() {
     divider(H-123,ink,3);
     label(sharePrefs.caption,left,H-65,32);
   }
-  modal.querySelector('#share-text').value = shareContentText();
+  modal.querySelector('#share-text').value = shareContentText(log);
   canvas.toBlob(blob=>{
     if (revision !== shareRevision || !canvas.isConnected) return;
     shareBlob = blob;
@@ -691,7 +712,7 @@ function drawShare() {
     for (const button of imageButtons) button.disabled = false;
   }, 'image/png');
 }
-async function shareNative(){if(!shareBlob){toast('画像を準備中です。もう一度お試しください');return;}const file=new File([shareBlob],shareFilename(sharePrefs.kind,sharePrefs.date,day,today),{type:'image/png'}),text=modal.querySelector('#share-text')?.value??shareContentText();try{if(navigator.canShare?.({files:[file]})&&navigator.share){await navigator.share({files:[file],title:'REPS NOTE',text});}else{download(shareBlob,file.name);toast('画像のダウンロードを開始しました。SNSで添付してください');}}catch(err){if(err.name!=='AbortError'){download(shareBlob,file.name);toast('共有できなかったため画像のダウンロードを開始しました');}}}
+async function shareNative(){if(!shareBlob){toast('画像を準備中です。もう一度お試しください');return;}const file=new File([shareBlob],shareFilename(sharePrefs.kind,sharePrefs.date,day,today,shareMonth),{type:'image/png'}),text=modal.querySelector('#share-text')?.value??shareContentText();try{if(navigator.canShare?.({files:[file]})&&navigator.share){await navigator.share({files:[file],title:'REPS NOTE',text});}else{download(shareBlob,file.name);toast('画像のダウンロードを開始しました。SNSで添付してください');}}catch(err){if(err.name!=='AbortError'){download(shareBlob,file.name);toast('共有できなかったため画像のダウンロードを開始しました');}}}
 const recordActions=new Set([
   'favorite','picker-favorite','choose-exercise','use-routine','delete-routine','add-set','add-three-sets','copy-set','complete-set',
   'delete-set','delete-exercise','copy-exercise-previous','copy-previous','copy-food','copy-food-day','delete-food',
@@ -806,7 +827,8 @@ async function handleAction(d){try{switch(d.action){
   case 'record-info':openDialog('自己ベストのルール','<p>完了したメインセットのうち、補助なしで1回以上できた最高重量を表示します。同重量なら回数の多いセット、同回数なら新しい日付を優先します。</p><div class="info-box">ウォームアップ・補助あり・未完了セットは集計しません。自重種目は追加重量が同じなら回数の増加でも王冠が出ます。その他の種目は最高重量が増えたときに王冠が出ます。</div><p>「元の記録を訂正する」で修正すると、すべての保存済みセットから再計算します。単位切替・読み込み・訂正だけでは王冠の演出を繰り返しません。</p>');break;
   case 'share':shareDialog();break;
   case 'share-plan':shareDialog('plan');break;
-  case 'share-download':if(shareBlob){download(shareBlob,shareFilename(sharePrefs.kind,sharePrefs.date,day,today));toast('共有画像のダウンロードを開始しました');}else toast('画像を準備中です');break;
+  case 'share-month':shareDialog('month');break;
+  case 'share-download':if(shareBlob){download(shareBlob,shareFilename(sharePrefs.kind,sharePrefs.date,day,today,shareMonth));toast('共有画像のダウンロードを開始しました');}else toast('画像を準備中です');break;
   case 'share-native':await shareNative();break;
   case 'share-copy':{const text=modal.querySelector('#share-text');try{await navigator.clipboard.writeText(text.value);toast('投稿文をコピーしました');}catch{text.focus();text.select();toast('投稿文を選択しました。端末のコピー操作でコピーできます');}break;}
   case 'timer-open':timerDialog();break;

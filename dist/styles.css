@@ -1600,6 +1600,15 @@ a {
   border: 1px solid currentColor;
 }
 
+.history-calendar-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+}
+
 .history-item {
   width: 100%;
   display: flex;

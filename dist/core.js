@@ -72,26 +72,91 @@ export const cloneExercise = e => ({...e,id:uid(),sets:e.sets.map(cloneSet)});
 export function allSets(state) {
   return Object.entries(state.workouts).flatMap(([date,w])=>w.exercises.flatMap(e=>e.sets.map(s=>({...s,date,exerciseId:e.exerciseId,instanceId:e.id}))));
 }
-export function records(state) {
-  const bodyweightIds = new Set([...EXERCISES, ...state.customExercises]
+function bodyweightExerciseIds(state) {
+  return new Set([...EXERCISES, ...state.customExercises]
     .filter(exercise => exercise.load === 'body').map(exercise => exercise.id));
+}
+function canSetRecord(set, bodyweight) {
   // Older versions allowed clearing the weight of a completed machine/weighted set.
   // Keep the source editable, but zero added load is a valid PR only for bodyweight exercises.
-  const candidates = allSets(state).filter(set =>
-    eligible(set) && (set.kg > 0 || bodyweightIds.has(set.exerciseId)));
-  const maxima = new Map();
-  for (const set of candidates) {
-    maxima.set(set.exerciseId, Math.max(set.kg, maxima.get(set.exerciseId) ?? 0));
-  }
-  const out = Object.create(null);
-  for (const set of candidates) {
-    if (maxima.get(set.exerciseId) - set.kg > EPS) continue;
-    const best = out[set.exerciseId];
-    if (!best || set.reps > best.reps || (set.reps === best.reps && set.date >= best.date)) {
-      out[set.exerciseId] = set;
+  return eligible(set) && (set.kg > 0 || bodyweight);
+}
+function preferredRecord(set, best) {
+  return !best || set.reps > best.reps || (set.reps === best.reps && set.date >= best.date);
+}
+function addRecordCandidates(ranks, date, entries, bodyweightIds, exerciseIds) {
+  for (const entry of entries) {
+    const id = entry.exerciseId;
+    if (exerciseIds && !exerciseIds.has(id)) continue;
+    const bodyweight = bodyweightIds.has(id);
+    for (const set of entry.sets) {
+      if (!canSetRecord(set, bodyweight)) continue;
+      if (!ranks.has(id)) ranks.set(id, {maxKg:set.kg, peers:new Map()});
+      const rank = ranks.get(id);
+      if (rank.maxKg - set.kg > EPS) continue;
+      if (set.kg > rank.maxKg) {
+        rank.maxKg = set.kg;
+        for (const kg of rank.peers.keys()) {
+          if (rank.maxKg - kg > EPS) rank.peers.delete(kg);
+        }
+      }
+      // A future weight within EPS can break a tie. Retain the best at each exact weight.
+      const candidate = {...set, date, exerciseId:id, instanceId:entry.id};
+      if (preferredRecord(candidate, rank.peers.get(set.kg))) {
+        rank.peers.delete(set.kg);
+        rank.peers.set(set.kg, candidate);
+      }
     }
   }
+}
+function bestRecord(rank) {
+  let best;
+  for (const set of rank.peers.values()) {
+    if (preferredRecord(set, best)) best = set;
+  }
+  return best;
+}
+export function records(state) {
+  const ranks = new Map();
+  const bodyweightIds = bodyweightExerciseIds(state);
+  for (const [date, workout] of Object.entries(state.workouts)) {
+    addRecordCandidates(ranks, date, workout.exercises, bodyweightIds);
+  }
+  const out = Object.create(null);
+  for (const [id, rank] of ranks) out[id] = bestRecord(rank);
   return out;
+}
+function countRecordUpdates(state, sortedDays) {
+  const exerciseIds = new Set();
+  for (const day of sortedDays) {
+    for (const entry of state.workouts[day].exercises) exerciseIds.add(entry.exerciseId);
+  }
+  if (!exerciseIds.size) return 0;
+  const prior = new Map();
+  const bodyweightIds = bodyweightExerciseIds(state);
+  for (const [date, workout] of Object.entries(state.workouts)) {
+    if (date < sortedDays[0]) addRecordCandidates(prior, date, workout.exercises, bodyweightIds, exerciseIds);
+  }
+  const updated = new Set();
+  for (const day of sortedDays) {
+    const entries = state.workouts[day].exercises;
+    for (const {exerciseId, sets} of entries) {
+      const rank = prior.get(exerciseId);
+      if (!rank || updated.has(exerciseId)) continue;
+      const bodyweight = bodyweightIds.has(exerciseId);
+      const bestReps = bodyweight ? bestRecord(rank).reps : 0;
+      if (sets.some(set => canSetRecord(set, bodyweight) &&
+        (set.kg > rank.maxKg + EPS || (bodyweight && set.kg >= rank.maxKg - EPS && set.reps > bestReps)))) {
+        updated.add(exerciseId);
+      }
+    }
+    // The full day's sets become eligible as a baseline only on later days.
+    if (day !== sortedDays.at(-1)) addRecordCandidates(prior, day, entries, bodyweightIds, exerciseIds);
+  }
+  return updated.size;
+}
+export function recordUpdateCount(state, day) {
+  return state.workouts[day] ? countRecordUpdates(state, [day]) : 0;
 }
 export function workoutStats(w) {
   const exercises = w?.exercises ?? [];
@@ -110,6 +175,36 @@ export function lastExercise(state,id,before) {
 }
 export function mealTotals(entries=[]) {
   return entries.reduce((a,m)=>{ for(const k of ['kcal','p','f','c'])a[k]+=m[k]*m.amount/(m.basis==='100g'?100:1); return a; },{kcal:0,p:0,f:0,c:0});
+}
+export function monthlySummary(state, month) {
+  const inMonth = date => date.startsWith(month+'-');
+  const workoutDates = Object.keys(state.workouts).filter(inMonth).sort();
+  let trainingDays = 0, completed = 0, volumeKg = 0, cardioSessions = 0, cardioMinutes = 0;
+  for (const day of workoutDates) {
+    const workout = state.workouts[day];
+    const stats = workoutStats(workout);
+    if (!stats.sets) continue;
+    trainingDays++;
+    completed += stats.sets;
+    volumeKg += stats.volume;
+    for (const exercise of workout.exercises) {
+      for (const set of exercise.sets) {
+        if (set.completed && set.minutes > 0) {
+          cardioSessions++;
+          cardioMinutes += set.minutes;
+        }
+      }
+    }
+  }
+  const meals = Object.entries(state.meals).filter(([date, entries]) => inMonth(date) && entries.length);
+  const kcal = meals.reduce((total, [, entries]) => total + mealTotals(entries).kcal, 0);
+  const body = state.body.filter(entry => inMonth(entry.date)).sort((a,b) => a.date.localeCompare(b.date));
+  return {
+    month, trainingDays, strengthSets:completed-cardioSessions, volumeKg,
+    updatedExercises:countRecordUpdates(state, workoutDates), cardioSessions, cardioMinutes,
+    mealDays:meals.length, avgKcal:meals.length ? kcal / meals.length : null,
+    bodyDays:body.length, firstWeightKg:body[0]?.kg ?? null, lastWeightKg:body.at(-1)?.kg ?? null,
+  };
 }
 export const macroEnergy = m => m.p*4+m.f*9+m.c*4;
 export function planStats(plan,body=[],today=localDate()) {

@@ -30,6 +30,8 @@ test('PNG and shared file names follow the date setting and the date on the card
   }
   assert.equal(shareFilename('plan', true, '2026-11-14', '2026-11-22'), 'REPS NOTE-plan-2026-11-22.png');
   assert.equal(shareFilename('food', true, '2026-11-14', '2026-11-22'), 'REPS NOTE-food-2026-11-14.png');
+  assert.equal(shareFilename('month', true, '2027-01-02', '2027-01-15', '2026-12'), 'REPS NOTE-month-2026-12.png');
+  assert.equal(shareFilename('month', false, '2027-01-02', '2027-01-15', '2026-12'), 'REPS NOTE-month.png');
 });
 
 const lookup = id => EXERCISES.find(exercise => exercise.id === id);
@@ -46,13 +48,14 @@ test('share text and image use each completed row in order, including different 
     ]},
   ]};
   const describe = (set, exercise, show) => setDetails(set,show ? set.kg : null,'kg','片手');
-  const report = sharedWorkout(workout, lookup, true, describe);
-  assert.deepEqual(report.textLines.slice(0,5), [
-    '朝の運動｜筋トレ3セット・有酸素2回完了', 'ダンベルプレス（3セット）',
+  const report = sharedWorkout(workout, lookup, true, describe, 1);
+  assert.equal(report.recordUpdateLabel,'自己ベスト更新 1種目');
+  assert.deepEqual(report.textLines.slice(0,6), [
+    '朝の運動｜筋トレ3セット・有酸素2回完了', report.recordUpdateLabel, 'ダンベルプレス（3セット）',
     '1セット目　10 kg × 12 回（片手・ウォームアップ）', '3セット目　20 kg × 8 回（片手）',
     '4セット目　20 kg × 6 回（片手・補助あり） RPE 8.5',
   ]);
-  assert.deepEqual(report.textLines.slice(5), [
+  assert.deepEqual(report.textLines.slice(6), [
     'トレッドミル（2回）','1回目　24.25分 / 2.64 km / 傾斜 -1.5% / 速度 6.5 km/h / 消費 135.5 kcal / 0歩',
     '3回目　5分 / 消費 0 kcal',
   ]);
@@ -69,10 +72,17 @@ test('share text and image use each completed row in order, including different 
   const small = workoutCardLayout(report.entries, 2*cardEntryHeight + 3*cardRowHeight + cardFooterHeight);
   assert.deepEqual(small.visible.map(item => item.count), [2,1]);
   assert.match(small.remainder, /ほか 筋トレ1セット・有酸素1回/);
-  const hidden = sharedWorkout(workout, lookup, false, describe);
+  const hidden = sharedWorkout(workout, lookup, false, describe, 1);
+  assert.ok(hidden.textLines.includes(report.recordUpdateLabel));
   assert.doesNotMatch(hidden.textLines.join('\n'), /\b(?:kg|lbs)\b/);
   assert.match(hidden.textLines.join('\n'), /4セット目　6 回（補助あり） RPE 8.5/);
   assert.deepEqual(hidden.entries[1],report.entries[1]);
+});
+
+test('workout shares show zero when no previous best was improved', () => {
+  const report = sharedWorkout({title:'オフ',exercises:[]}, lookup, false, setDetails, 0);
+  assert.equal(report.recordUpdateLabel,'自己ベスト更新 0種目');
+  assert.ok(report.textLines.includes(report.recordUpdateLabel));
 });
 
 test('CSV retains v1 strength columns, all cardio metrics and drafts, quoted text and signed numbers', () => {

@@ -5,7 +5,7 @@ function workoutCounts(strength, cardio) {
   return (strength ? '筋トレ'+strength+'セット・' : '')+'有酸素'+cardio+'回';
 }
 
-export function sharedWorkout(workout, getExercise, showWeights, describeStrengthSet) {
+export function sharedWorkout(workout, getExercise, showWeights, describeStrengthSet, recordUpdates = 0) {
   const entries = [];
   let strengthSets = 0, cardioSessions = 0, cardioMinutes = 0;
   for (const entry of workout.exercises) {
@@ -30,11 +30,12 @@ export function sharedWorkout(workout, getExercise, showWeights, describeStrengt
     entries.push({exerciseId:entry.exerciseId, name:exercise.name, cardio, rows, count:rows.length+(cardio ? '回' : 'セット')});
   }
   const summary = workoutCounts(strengthSets, cardioSessions)+'完了';
-  const textLines = [workout.title+'｜'+summary];
+  const recordUpdateLabel = `自己ベスト更新 ${recordUpdates}種目`;
+  const textLines = [workout.title+'｜'+summary, recordUpdateLabel];
   for (const entry of entries) {
     textLines.push(entry.name+'（'+entry.count+'）', ...entry.rows.map(row => row.ordinal+'　'+row.detail));
   }
-  return {entries, cardioMinutes, cardioSessions, strengthSets, textLines};
+  return {entries, cardioMinutes, cardioSessions, strengthSets, recordUpdateLabel, textLines};
 }
 
 export const cardEntryHeight = 54, cardRowHeight = 38, cardFooterHeight = 46;
@@ -142,7 +143,7 @@ export function planNutritionLines(plan) {
   return lines;
 }
 
-export function shareFilename(kind, showDate, workoutDay, today) {
-  const date = kind === 'plan' ? today : workoutDay;
+export function shareFilename(kind, showDate, workoutDay, today, month = workoutDay.slice(0,7)) {
+  const date = kind === 'month' ? month : kind === 'plan' ? today : workoutDay;
   return `REPS NOTE-${kind}${showDate ? '-' + date : ''}.png`;
 }

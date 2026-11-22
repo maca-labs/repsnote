@@ -6,11 +6,13 @@ import {
   cloneSet,
   daysBetween,
   demoState,
+  EPS,
   fromKg,
   macroEnergy,
   mealTotals,
   newSet,
   planStats,
+  recordUpdateCount,
   records,
   shiftDay,
   toKg,
@@ -173,6 +175,64 @@ test('equal-weight records select greater repetitions, then the latest occurrenc
   currentExercise(state).sets[0].kg = 34 + 1e-8;
   currentExercise(state).sets[0].reps = 9;
   assert.equal(best(state).id, 'earlier', 'floating-point noise must not create a heavier PR');
+});
+
+test('daily record updates compare distinct exercises to dates strictly before the shared workout', () => {
+  const state = fixture();
+  const exercises = state.workouts[TODAY].exercises;
+  const prior = state.workouts[PREVIOUS].exercises;
+  exercises.push({exerciseId:EXERCISE_ID, sets:[completedSet('even-heavier',38)]});
+  exercises.push({exerciseId:'leg-press', sets:[completedSet('first-leg',200)]});
+  state.workouts[shiftDay(TODAY,1)] = {exercises:[{exerciseId:EXERCISE_ID, sets:[completedSet('future',50)]}]};
+  assert.equal(recordUpdateCount(state, TODAY), 1);
+  assert.equal(recordUpdateCount(state, PREVIOUS), 0);
+  assert.equal(recordUpdateCount(state, shiftDay(TODAY,-1)), 0);
+
+  prior.push({exerciseId:'leg-press', sets:[completedSet('past-leg',180)]});
+  assert.equal(recordUpdateCount(state, TODAY), 2);
+  exercises[1].sets = [];
+  currentExercise(state).sets[0].kg = 32;
+  assert.equal(recordUpdateCount(state, TODAY), 1);
+  prior.at(-1).sets[0].completed = false;
+  assert.equal(recordUpdateCount(state, TODAY), 0);
+});
+
+test('daily updates follow bodyweight repetition rules and compare weights to the true maximum', () => {
+  const state = fixture();
+  const before = state.workouts[PREVIOUS].exercises;
+  const today = state.workouts[TODAY].exercises;
+  before[0].sets = [completedSet('prior-high',34,5), completedSet('prior-tie',34-.8*EPS,9)];
+  today[0].sets = [completedSet('new-tie',34+.8*EPS,15)];
+  assert.equal(recordUpdateCount(state, TODAY), 0, 'weighted repetition increases and rounding noise are not updates');
+  today[0].sets[0].kg = 34+EPS;
+  assert.equal(recordUpdateCount(state, TODAY), 0, 'the tolerance boundary is inclusive');
+  today[0].sets[0].kg = 34+2*EPS;
+  assert.equal(recordUpdateCount(state, TODAY), 1);
+
+  state.customExercises = [{id:'custom-body',load:'body'}];
+  before.push({exerciseId:'custom-body',sets:[completedSet('body-before',0,12)]});
+  today.push({exerciseId:'custom-body',sets:[completedSet('body-now',0,12)]});
+  assert.equal(recordUpdateCount(state, TODAY), 1, 'an exact repeat is not an update');
+  today.at(-1).sets[0].reps++;
+  assert.equal(recordUpdateCount(state, TODAY), 2);
+});
+
+test('daily updates exclude ineligible attempts from both the baseline and the shared day', () => {
+  const state = fixture();
+  const before = state.workouts[PREVIOUS].exercises;
+  const today = state.workouts[TODAY].exercises;
+  today[0].sets = [
+    completedSet('warm',80,10,{kind:'warmup'}), completedSet('assisted',80,12,{assisted:true}),
+    completedSet('draft',80,12,{completed:false}), completedSet('unchanged',34,20),
+  ];
+  before.push({exerciseId:'leg-press', sets:[completedSet('legacy-zero',0)]});
+  today.push({exerciseId:'leg-press', sets:[completedSet('first-valid',120)]});
+  before.push({exerciseId:'cardio-running', sets:[{id:'old-run',completed:true,minutes:10}]});
+  today.push({exerciseId:'cardio-running', sets:[{id:'new-run',completed:true,minutes:20}]});
+  assert.equal(recordUpdateCount(state, TODAY), 0);
+  before[0].sets.push(completedSet('high-draft',100,10,{completed:false}));
+  today[0].sets[2].completed = true;
+  assert.equal(recordUpdateCount(state, TODAY), 1);
 });
 
 test('display-unit settings never alter canonical records or completed volume', () => {

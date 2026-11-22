@@ -6,7 +6,7 @@ const shell = new Set([
   'index.html', 'styles.css', 'icon.svg', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
   'app.js', 'ai-prompt.js', 'calorie-history.js', 'catalog.js',
-  'core.js', 'install.js', 'share.js', 'workout-input.js',
+  'core.js', 'install.js', 'month-share.js', 'share.js', 'workout-input.js',
 ].map(path => new URL(path, scope).href));
 const indexUrl = new URL('index.html', scope).href;
 
