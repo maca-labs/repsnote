@@ -13,7 +13,7 @@ export const toKg = (n,u) => u==='lbs' ? n*LB_KG : n;
 export const fmt = (n,dec=1) => Number(n).toLocaleString('ja-JP',{maximumFractionDigits:dec});
 export const eligible = s => s.completed && s.kind==='work' && !s.assisted && Number.isFinite(s.kg) && s.kg>=0 && Number.isInteger(s.reps) && s.reps>0;
 export function blankState() {
-  return {schemaVersion:SCHEMA,settings:{unit:'kg',autoTimer:true,timerSeconds:90,weightStep:2.5},favorites:['dumbbell-press','leg-press','lat-pulldown','seated-cable-row','lateral-raise'],customExercises:[],routines:[],workouts:{},meals:{},foods:[],body:[],plan:null,timer:null};
+  return {schemaVersion:SCHEMA,settings:{unit:'kg',autoTimer:false,timerSeconds:90,weightStep:2.5},favorites:['dumbbell-press','leg-press','lat-pulldown','seated-cable-row','lateral-raise'],customExercises:[],routines:[],workouts:{},meals:{},foods:[],body:[],plan:null,timer:null};
 }
 export const newSet = (kg=0,reps=10) => ({id:uid(),kg,reps,completed:false,kind:'work',assisted:false,rpe:null});
 export const cloneSet = s => ({...s,id:uid(),completed:false});

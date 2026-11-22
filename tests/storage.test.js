@@ -48,6 +48,23 @@ async function openApp(t, original=JSON.stringify(blankState())){
   return {app,modal,toast,click,storage,values,events,windowEvents,importText,read:()=>JSON.parse(values.get(dataKey))};
 }
 
+test('set table unit switches update all displays without rewriting recorded weights', async t=>{
+  const state=blankState();
+  const day=localDate();
+  state.workouts[day]={title:'PUSH',note:'',exercises:[
+    {id:'press',exerciseId:'dumbbell-press',sets:[{...newSet(45.359237,6),completed:true}]},
+    {id:'leg',exerciseId:'leg-press',sets:[newSet(134.5,8)]}
+  ]};
+  const ui=await openApp(t,JSON.stringify(state));
+  for(const [instance,unit] of [['press','lbs'],['leg','kg']]){
+    assert.ok(ui.app.innerHTML.includes(`data-instance="${instance}">${unit}</button>`));
+    await ui.click('unit',{instance,unit});
+    assert.equal(ui.read().settings.unit,unit);
+    assert.deepEqual(ui.read().workouts,state.workouts);
+    assert.equal(ui.app.innerHTML.split(`data-unit="${unit}" class="active" aria-pressed="true"`).length-1,3);
+  }
+});
+
 test('a failed write restores both the screen and the stored state', async t=>{
   const ui=await openApp(t);
   ui.storage.failKey=dataKey;

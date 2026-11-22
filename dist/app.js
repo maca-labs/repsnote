@@ -115,6 +115,14 @@ function ensureWorkout(date=day){return state.workouts[date]??=( {title:'WORKOUT
 const instance=id=>getWorkout().exercises.find(e=>e.id===id);
 const setById=id=>getWorkout().exercises.flatMap(e=>e.sets).find(s=>s.id===id);
 const unit=()=>state.settings.unit;
+function unitSwitch(label='トレーニング重量の単位',instanceId){
+  const context=instanceId?` data-instance="${h(instanceId)}"`:'';
+  const buttons=['kg','lbs'].map(value=>{
+    const active=unit()===value;
+    return `<button type="button" data-action="unit" data-unit="${value}" class="${active?'active':''}" aria-pressed="${active}"${context}>${value}</button>`;
+  });
+  return `<div class="unit-switch" role="group" aria-label="${h(label)}">${buttons.join('')}</div>`;
+}
 const weight=(kg,dec=2)=>nf(C.fromKg(kg,unit()),dec);
 const dateLabel=(d,long=false)=>C.parseDay(d).toLocaleDateString('ja-JP',{month:'long',day:'numeric',...(long?{year:'numeric',weekday:'short'}:{})});
 const loadLabel=e=>e.id==='cable-fly'?'片側の表示重量':({single:'片手の重量',total:'合計重量',stack:'マシン表示の重量',body:'追加重量（自重は0）'}[e.load]);
@@ -124,7 +132,7 @@ const NAV=[['workout','トレーニング','dumbbell','筋トレ'],['food','食�
 function render(){
   const title=NAV.find(n=>n[0]===view)?.[1]??'トレーニング';
   app.innerHTML=`<aside class="sidebar"><div class="brand"><img src="./icon.svg" alt="">REPS NOTE</div><nav class="nav" aria-label="メインメニュー">${NAV.map(([id,label,ic])=>`<button class="nav-item ${view===id?'active':''}" data-action="nav" data-view="${id}" ${view===id?'aria-current="page"':''}>${icon(ic)}${label}</button>`).join('')}</nav><div class="sidebar-bottom"><button class="nav-item" data-action="settings">${icon('settings')}設定・バックアップ</button></div></aside>
-  <main class="shell"><header class="topbar"><div><div class="eyebrow">REPS NOTE</div><h1>${title}</h1></div><div class="top-actions"><div class="unit-switch" aria-label="トレーニング重量の単位"><button data-action="unit" data-unit="kg" class="${unit()==='kg'?'active':''}" aria-pressed="${unit()==='kg'}">kg</button><button data-action="unit" data-unit="lbs" class="${unit()==='lbs'?'active':''}" aria-pressed="${unit()==='lbs'}">lbs</button></div><button class="button primary" data-action="share" aria-label="記録をシェア">${icon('share')}<span class="share-label">記録をシェア</span></button>${ib('settings','設定・バックアップ','settings','', 'header-settings')}</div></header>
+  <main class="shell"><header class="topbar"><div><div class="eyebrow">REPS NOTE</div><h1>${title}</h1></div><div class="top-actions">${unitSwitch()}<button class="button primary" data-action="share" aria-label="記録をシェア">${icon('share')}<span class="share-label">記録をシェア</span></button>${ib('settings','設定・バックアップ','settings','', 'header-settings')}</div></header>
   ${mode==='demo'?`<div class="demo-banner"><span>サンプル表示中 · 架空の記録</span><button data-action="start-real">自分の記録をはじめる</button></div>`:''}
   ${storageProblem?`<div class="error-banner" role="alert">${h(storageProblem)}</div>`:''}
   ${view==='workout'?renderWorkout():view==='food'?renderFood():view==='body'?renderBody():view==='records'?renderRecords():renderHistory()}
@@ -193,7 +201,7 @@ function focusSet(id, field = 'set-weight', reveal = false) {
   el?.focus({preventScroll:true});
   if (reveal) el?.scrollIntoView({block:'nearest'});
 }
-function renderExercise(inst,prs){const ex=exercise(inst.exerciseId),last=C.lastExercise(state,ex.id,day);return `<article class="exercise-card" id="exercise-${h(inst.id)}"><div class="exercise-head"><div class="row"><div class="badge-icon">${icon('dumbbell')}</div><div><div class="exercise-title">${h(ex.name)}</div><div class="exercise-sub">${h(ex.group)} · ${h(ex.equipment)} · ${h(loadLabel(ex))}</div></div></div><div class="exercise-tools">${ib('favorite',state.favorites.includes(ex.id)?'お気に入りから外す':'お気に入りに追加','star',`data-id="${h(ex.id)}"`,state.favorites.includes(ex.id)?'active':'')}${ib('exercise-menu','種目の編集・削除','more',`data-id="${h(inst.id)}"`)}</div></div><div class="set-table"><div class="set-grid labels"><span>SET</span><span class="previous">前回</span><span>重量 ${unit()}</span><span>回数</span><span>完了</span><span>複製</span><span></span><span>削除</span></div>${inst.sets.map((s,i)=>{const prev=last?.sets[i]??last?.sets.at(-1),isPR=prs[ex.id]?.id===s.id;return `<div class="set-grid set-row ${s.completed?'done':''}"><div class="set-num">${s.kind==='warmup'?'W':i+1}${isPR?icon('crown','tiny-crown'):s.assisted?'<span class="small">補</span>':''}</div><div class="previous ${prev?'has-previous':''}">${prev?`<span class="previous-label">前回 </span>${weight(prev.kg)} × ${prev.reps}`:'—'}</div><select aria-label="${h(ex.name)} セット${i+1}の重量" data-change="set-weight" data-load="${ex.load}" data-id="${h(s.id)}">${weightOptions(s,last)}</select><select aria-label="${h(ex.name)} セット${i+1}の回数" data-change="set-reps" data-id="${h(s.id)}">${options([...new Set([...Array.from({length:30},(_,i)=>i+1),40,50,60,100,s.reps])].sort((a,b)=>a-b),s.reps,n=>n,'<option value="custom">直接入力…</option>')}</select><button class="complete-check ${s.completed?'checked':''}" data-action="complete-set" data-id="${h(s.id)}" data-exercise="${h(ex.id)}" aria-label="${h(ex.name)} セット${i+1}を${s.completed?'未完了にする':'完了にする'}" aria-pressed="${s.completed}">${icon('check')}</button>${ib('copy-set',`${ex.name} セット${i+1}をコピー`,'copy',`data-id="${h(s.id)}" data-instance="${h(inst.id)}"`)}${ib('edit-set',`${ex.name} セット${i+1}の詳細を編集`,'more',`data-id="${h(s.id)}"`)}${ib('delete-set',`${ex.name} セット${i+1}を削除`,'trash',`data-id="${h(s.id)}" data-date="${day}"`)}</div>`;}).join('')}</div><div class="exercise-footer">
+function renderExercise(inst,prs){const ex=exercise(inst.exerciseId),last=C.lastExercise(state,ex.id,day);return `<article class="exercise-card" id="exercise-${h(inst.id)}"><div class="exercise-head"><div class="row"><div class="badge-icon">${icon('dumbbell')}</div><div><div class="exercise-title">${h(ex.name)}</div><div class="exercise-sub">${h(ex.group)} · ${h(ex.equipment)} · ${h(loadLabel(ex))}</div></div></div><div class="exercise-tools">${ib('favorite',state.favorites.includes(ex.id)?'お気に入りから外す':'お気に入りに追加','star',`data-id="${h(ex.id)}"`,state.favorites.includes(ex.id)?'active':'')}${ib('exercise-menu','種目の編集・削除','more',`data-id="${h(inst.id)}"`)}</div></div><div class="set-table"><div class="set-grid labels"><span>SET</span><span class="previous">前回</span><div class="weight-heading"><span>重量</span>${unitSwitch(`${ex.name}の重量表示単位`,inst.id)}</div><span>回数</span><span>完了</span><span>複製</span><span></span><span>削除</span></div>${inst.sets.map((s,i)=>{const prev=last?.sets[i]??last?.sets.at(-1),isPR=prs[ex.id]?.id===s.id;return `<div class="set-grid set-row ${s.completed?'done':''}"><div class="set-num">${s.kind==='warmup'?'W':i+1}${isPR?icon('crown','tiny-crown'):s.assisted?'<span class="small">補</span>':''}</div><div class="previous ${prev?'has-previous':''}">${prev?`<span class="previous-label">前回 </span>${weight(prev.kg)} × ${prev.reps}`:'—'}</div><select aria-label="${h(ex.name)} セット${i+1}の重量（${unit()}）" data-change="set-weight" data-load="${ex.load}" data-id="${h(s.id)}">${weightOptions(s,last)}</select><select aria-label="${h(ex.name)} セット${i+1}の回数" data-change="set-reps" data-id="${h(s.id)}">${options([...new Set([...Array.from({length:30},(_,i)=>i+1),40,50,60,100,s.reps])].sort((a,b)=>a-b),s.reps,n=>n,'<option value="custom">直接入力…</option>')}</select><button class="complete-check ${s.completed?'checked':''}" data-action="complete-set" data-id="${h(s.id)}" data-exercise="${h(ex.id)}" aria-label="${h(ex.name)} セット${i+1}を${s.completed?'未完了にする':'完了にする'}" aria-pressed="${s.completed}">${icon('check')}</button>${ib('copy-set',`${ex.name} セット${i+1}をコピー`,'copy',`data-id="${h(s.id)}" data-instance="${h(inst.id)}"`)}${ib('edit-set',`${ex.name} セット${i+1}の詳細を編集`,'more',`data-id="${h(s.id)}"`)}${ib('delete-set',`${ex.name} セット${i+1}を削除`,'trash',`data-id="${h(s.id)}" data-date="${day}"`)}</div>`;}).join('')}</div><div class="exercise-footer">
   <button type="button" class="text-button" data-action="add-set" data-id="${h(inst.id)}">${icon('plus')}セットを追加</button>
   <button type="button" class="text-button" data-action="add-three-sets" data-id="${h(inst.id)}" title="この種目の最後のセットを3つ複製" ${inst.sets.length?'':'disabled'}>${icon('copy')}同じセットを3つ追加</button>
   <button type="button" class="text-button" data-action="copy-exercise-previous" data-id="${h(inst.id)}">${icon('history')}${last?`${dateLabel(last.date)}をコピー`:'前回のセット'}</button>
@@ -235,7 +243,62 @@ function addExercise(id){const w=ensureWorkout();if(w.exercises.some(e=>e.exerci
 function customExerciseForm(){openDialog('自分の種目をつくる',`<p>違うマシンや別のフォームは、別の種目として記録すると比較しやすくなります。</p><form><div class="form-grid">${inputField('name','種目名','','required maxlength="100" placeholder="例：レッグプレス（ジムA）"','full')}${selectField('group','部位',['胸','背中','肩','腕','脚','体幹'],'胸')}${selectField('equipment','器具',['バーベル','ダンベル','マシン','ケーブル','自重'],'マシン')}${selectField('load','重量の記録方法',[['total','合計重量'],['single','片手の重量'],['stack','マシン表示の重量'],['body','追加重量（自重は0）']],'stack','full')}</div>${formEnd('作成して追加')}</form>`);bindForm(fd=>{const name=String(fd.get('name')).trim();need(name.length>0,'種目名を入力してください。');need(!catalog().some(e=>e.name===name),'同名の種目があります。別の名前を付けてください。');const id=C.uid();state.customExercises.push({id,name,group:fd.get('group'),equipment:fd.get('equipment'),load:fd.get('load'),aliases:[]});state.favorites.push(id);addExercise(id);modal.close();commit('種目を追加しました');});}
 function routineDialog(){const routines=[...ROUTINES,...state.routines];openDialog('メニューを選ぶ',`<p>種目の並びをまとめて追加。前回の完了セットがあれば、重量と回数も引き継ぎます。</p>${routines.map(r=>`<div class="routine-option"><div><h3>${h(r.name)}</h3><p>${h(r.subtitle)} · ${r.exerciseIds.length}種目</p></div><div class="row">${state.routines.some(x=>x.id===r.id)?ib('delete-routine','保存メニューを削除','trash',`data-id="${h(r.id)}"`):''}${btn('use-routine','追加する','plus','',`data-id="${h(r.id)}"`)}</div></div>`).join('')}`,'MY ROUTINES');}
 function saveRoutineForm(){if(!getWorkout().exercises.length){toast('先に種目を追加してください');return;}openDialog('メニューを保存',`<p>いまの種目と並び順を保存します。次回は各種目の前回記録を呼び出せます。</p><form>${inputField('name','メニュー名',getWorkout().title,'required maxlength="80"')}${formEnd('保存する')}</form>`);bindForm(fd=>{state.routines.push({id:C.uid(),name:String(fd.get('name')).trim()||'マイメニュー',subtitle:catalogGroups(getWorkout()),exerciseIds:getWorkout().exercises.map(e=>e.exerciseId)});modal.close();commit('マイメニューを保存しました');});}
-function setEditor(id,date=day,focusField='kg'){const w=state.workouts[date],inst=w?.exercises.find(e=>e.sets.some(s=>s.id===id)),s=inst?.sets.find(s=>s.id===id);if(!s)return;const ex=exercise(inst.exerciseId);openDialog('セットを訂正する',`<p>${h(ex.name)} · ${dateLabel(date,true)}<br>訂正すると、自己ベストとボリュームも再計算されます。</p><form><div class="form-grid">${inputField('kg',`${loadLabel(ex)}（${unit()}）`,Number(C.fromKg(s.kg,unit()).toFixed(6)),`type="number" min="0" max="${C.fromKg(5000,unit())}" step="any" required inputmode="decimal"`)}${inputField('reps','回数',s.reps,'type="number" min="1" max="999" step="1" required inputmode="numeric"')}${selectField('kind','セットの種類',[['work','メインセット'],['warmup','ウォームアップ']],s.kind)}${inputField('rpe','きつさ RPE（任意）',s.rpe??'','type="number" min="1" max="10" step="any" inputmode="decimal"')}</div><label class="checkbox-row"><input name="completed" type="checkbox" ${s.completed?'checked':''}>完了したセット</label><label class="checkbox-row"><input name="assisted" type="checkbox" ${s.assisted?'checked':''}>補助あり（自己ベストから除外）</label>${formEnd('訂正して保存',btn('delete-set','セットを削除','trash','danger',`data-id="${h(id)}" data-date="${date}"`))}</form>`);const originalDisplay=Number(C.fromKg(s.kg,unit()).toFixed(6));bindForm(fd=>{const kg=editedWeightKg(fd.get('kg'), {unit:unit(),originalKg:s.kg,displayed:originalDisplay,completed:fd.has('completed'),load:ex.load}),reps=number(fd,'reps',1,999);need(Number.isInteger(reps),'回数は整数で入力してください。');const rpe=fd.get('rpe')===''?null:number(fd,'rpe',1,10);Object.assign(s,{kg,reps,kind:fd.get('kind'),rpe,completed:fd.has('completed'),assisted:fd.has('assisted')});modal.close();commit('記録と自己ベストを更新しました');});setTimeout(()=>modal.querySelector(`[name="${focusField}"]`)?.focus(),10);}
+function setEditor(id,date=day,focusField='kg'){
+  const workout=state.workouts[date];
+  const entry=workout?.exercises.find(e=>e.sets.some(set=>set.id===id));
+  const set=entry?.sets.find(set=>set.id===id);
+  if(!set)return;
+  const ex=exercise(entry.exerciseId);
+  let draftUnit=unit();
+  const displayWeight=(kg,u)=>Math.min(Number(C.fromKg(kg,u).toFixed(6)),C.fromKg(5000,u));
+  const weightLabel=u=>`${loadLabel(ex)}（${u}）`;
+  openDialog('セットを訂正する',`<p>${h(ex.name)} · ${dateLabel(date,true)}<br>訂正すると、自己ベストとボリュームも再計算されます。</p>
+    <form><input type="hidden" name="baseKg" value="${set.kg}">
+      <div class="form-grid">
+        ${inputField('kg',weightLabel(draftUnit),displayWeight(set.kg,draftUnit),`type="number" min="0" max="${C.fromKg(5000,draftUnit)}" step="any" required inputmode="decimal"`)}
+        ${selectField('inputUnit','重量の単位',['kg','lbs'],draftUnit)}
+        ${inputField('reps','回数',set.reps,'type="number" min="1" max="999" step="1" required inputmode="numeric"')}
+        ${selectField('kind','セットの種類',[['work','メインセット'],['warmup','ウォームアップ']],set.kind)}
+        ${inputField('rpe','きつさ RPE（任意）',set.rpe??'','type="number" min="1" max="10" step="any" inputmode="decimal"')}
+      </div>
+      <label class="checkbox-row"><input name="completed" type="checkbox" ${set.completed?'checked':''}>完了したセット</label>
+      <label class="checkbox-row"><input name="assisted" type="checkbox" ${set.assisted?'checked':''}>補助あり（自己ベストから除外）</label>
+      ${formEnd('訂正して保存',btn('delete-set','セットを削除','trash','danger',`data-id="${h(id)}" data-date="${date}"`))}
+    </form>`);
+  const form=modal.querySelector('form');
+  const {kg:weightInput,baseKg,inputUnit}=form.elements;
+  // Keep the precise kg behind the rounded number, including while a submitted form waits for the record lock.
+  function readKg(raw,base,u,completed){
+    const originalKg=base===''?null:Number(base);
+    const displayed=originalKg===null?null:displayWeight(originalKg,u);
+    return editedWeightKg(raw,{unit:u,originalKg,displayed,completed,load:ex.load});
+  }
+  inputUnit.addEventListener('change',()=>{
+    if(weightInput.validity.badInput || (weightInput.value!==''&&!weightInput.validity.valid)){
+      inputUnit.value=draftUnit;
+      weightInput.reportValidity();
+      return;
+    }
+    const kg=weightInput.value===''?null:readKg(weightInput.value,baseKg.value,draftUnit,false);
+    draftUnit=inputUnit.value;
+    baseKg.value=kg??'';
+    weightInput.max=C.fromKg(5000,draftUnit);
+    weightInput.value=kg===null?'':displayWeight(kg,draftUnit);
+    form.querySelector('label[for="field-kg"]').textContent=weightLabel(draftUnit);
+  });
+  bindForm(fd=>{
+    const selectedUnit=fd.get('inputUnit');
+    const kg=readKg(fd.get('kg'),fd.get('baseKg'),selectedUnit,fd.has('completed'));
+    const reps=number(fd,'reps',1,999);
+    need(Number.isInteger(reps),'回数は整数で入力してください。');
+    const rpe=fd.get('rpe')===''?null:number(fd,'rpe',1,10);
+    Object.assign(set,{kg,reps,kind:fd.get('kind'),rpe,completed:fd.has('completed'),assisted:fd.has('assisted')});
+    state.settings.unit=selectedUnit;
+    modal.close();
+    commit('記録と自己ベストを更新しました');
+  });
+  setTimeout(()=>modal.querySelector(`[name="${focusField}"]`)?.focus(),10);
+}
 function exerciseMenu(id){const inst=instance(id);if(!inst)return;openDialog(exercise(inst.exerciseId).name,`<form><div class="field"><label for="exercise-note">この種目のメモ</label><textarea id="exercise-note" name="note" maxlength="2000" placeholder="シートの位置、グリップ、次回のポイント…">${h(inst.note??'')}</textarea></div>${formEnd('メモを保存',btn('delete-exercise','種目を削除','trash','danger',`data-id="${h(id)}"`))}</form>`);bindForm(fd=>{inst.note=fd.get('note');modal.close();commit('メモを保存しました');});}
 function foodForm({entry=null,preset=null,meal='朝食',saveOnly=false}={}){const f=entry??preset??{name:'',basis:'serving',amount:1,meal,kcal:'',p:0,f:0,c:0};openDialog(saveOnly?'登録した食品を編集':entry?'食事を訂正する':'食事を記録',`<p>${saveOnly?'登録済みの食品だけを更新します。過去の食事記録は当時の数値を保持します。':`${dateLabel(day,true)}の食事。パッケージの栄養表示などを入力してください。`}</p><form>${!saveOnly&&state.foods.length?`<div class="field" style="margin-bottom:18px"><label for="saved-food-select">いつもの食事から選ぶ</label><select id="saved-food-select"><option value="">新しく入力する</option>${state.foods.map(x=>`<option value="${h(x.id)}" ${preset?.id===x.id?'selected':''}>${h(x.name)}</option>`).join('')}</select></div>`:''}<div class="form-grid">${inputField('name','食品・メニュー名',f.name,'required maxlength="200"','full')}${!saveOnly?selectField('meal','食事',['朝食','昼食','夕食','間食'],f.meal??meal):''}${selectField('basis','栄養表示の基準',[['serving','1食分あたり'],['100g','100gあたり']],f.basis)}${!saveOnly?inputField('amount',f.basis==='100g'?'食べた量（g）':'食べた量（食分）',f.amount??(f.basis==='100g'?100:1),'type="number" min="0.01" max="10000" step="any" required inputmode="decimal"'):''}${inputField('kcal','基準あたりのカロリー（kcal）',f.kcal,'type="number" min="0" max="100000" step="any" required inputmode="decimal"')}</div><div class="form-grid three" style="margin-top:17px">${['p','f','c'].map((k,i)=>inputField(k,['P たんぱく質（g）','F 脂質（g）','C 炭水化物（g）'][i],f[k],'type="number" min="0" max="100000" step="any" required inputmode="decimal"')).join('')}</div><div class="info-box" id="food-calculation"></div>${!entry&&!saveOnly?'<label class="checkbox-row"><input type="checkbox" name="saveFood" '+(!preset?'checked':'')+'>いつもの食事に登録する</label>':''}${formEnd(saveOnly?'食品を更新':'食事を保存',entry?btn('delete-food','削除','trash','danger',`data-id="${h(entry.id)}"`):'')}</form>`);updateFoodCalculation();bindForm(fd=>{const data={name:String(fd.get('name')).trim(),basis:fd.get('basis'),kcal:number(fd,'kcal'),p:number(fd,'p'),f:number(fd,'f'),c:number(fd,'c')};need(data.name,'食品名を入力してください。');if(saveOnly){const item=state.foods.find(x=>x.id===preset.id);Object.assign(item,data);}else{const record={...data,id:entry?.id??C.uid(),amount:number(fd,'amount',.01,10000),meal:fd.get('meal')};state.meals[day]??=[];if(entry)state.meals[day]=state.meals[day].map(m=>m.id===entry.id?record:m);else state.meals[day].push(record);if(fd.has('saveFood'))state.foods.push({...data,id:C.uid()});}modal.close();commit(saveOnly?'食品を更新しました':'食事を保存しました');});}
 function updateFoodCalculation(){const form=modal.querySelector('form'),out=modal.querySelector('#food-calculation');if(!out||!form)return;const fd=new FormData(form),amount=Number(fd.get('amount')??1),basis=fd.get('basis'),mult=fd.has('amount')?(basis==='100g'?amount/100:amount):1;const values={kcal:Number(fd.get('kcal')),p:Number(fd.get('p')),f:Number(fd.get('f')),c:Number(fd.get('c'))};out.textContent=`${fd.has('amount')?'今回の量：':'表示の基準：'}${nf(values.kcal*mult,0)} kcal / P ${nf(values.p*mult)}・F ${nf(values.f*mult)}・C ${nf(values.c*mult)} g（PFC由来 ${nf(C.macroEnergy(values)*mult,0)} kcal）`;}
@@ -490,7 +553,15 @@ async function handleAction(d){try{switch(d.action){
   case 'nav':view=d.view;render();window.scrollTo({top:0,behavior:'instant'});break;
   case 'nav-food':view='food';render();window.scrollTo({top:0,behavior:'instant'});break;
   case 'nav-workout':view='workout';render();break;
-  case 'unit':state.settings.unit=d.unit;commit();break;
+  case 'unit':{
+    if(unit()===d.unit)break;
+    state.settings.unit=d.unit;
+    if(commit()){
+      const location=d.instance?`#exercise-${CSS.escape(d.instance)}`:'.top-actions';
+      app.querySelector(`${location} .unit-switch [aria-pressed="true"]`)?.focus({preventScroll:true});
+    }
+    break;
+  }
   case 'today':day=today;render();break;
   case 'day':day=d.date;render();break;
   case 'history-date':day=d.date;view='workout';render();window.scrollTo({top:0,behavior:'instant'});break;

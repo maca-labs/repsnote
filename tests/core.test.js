@@ -263,6 +263,16 @@ test('calendar arithmetic handles leap days and year boundaries', () => {
   assert.equal(daysBetween('2026-12-31', '2027-01-01'), 1);
 });
 
+test('automatic rest starts off for new journals and preserves the saved preference on restore', () => {
+  assert.equal(blankState().settings.autoTimer, false);
+  const sample = demoState(TODAY);
+  assert.equal(sample.settings.autoTimer, false);
+  for (const enabled of [true, false]) {
+    sample.settings.autoTimer = enabled;
+    assert.equal(validateState(sample, EXERCISE_IDS).settings.autoTimer, enabled);
+  }
+});
+
 test('valid backups round-trip all records without sharing objects or restoring timers', () => {
   assert.equal(validateState(blankState(), EXERCISE_IDS).schemaVersion, 1);
   const source = demoState(TODAY);
