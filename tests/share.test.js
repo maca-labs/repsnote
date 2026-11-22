@@ -21,8 +21,8 @@ test('only configured nutrition targets appear, including macros without a calor
 
 test('PNG and shared file names follow the date setting and the date on the card', () => {
   for (const kind of ['food','workout','plan']) {
-    assert.equal(shareFilename(kind, false, '2026-11-14', '2026-11-22'), `repnote-${kind}.png`);
+    assert.equal(shareFilename(kind, false, '2026-11-14', '2026-11-22'), `REPS NOTE-${kind}.png`);
   }
-  assert.equal(shareFilename('plan', true, '2026-11-14', '2026-11-22'), 'repnote-plan-2026-11-22.png');
-  assert.equal(shareFilename('food', true, '2026-11-14', '2026-11-22'), 'repnote-food-2026-11-14.png');
+  assert.equal(shareFilename('plan', true, '2026-11-14', '2026-11-22'), 'REPS NOTE-plan-2026-11-22.png');
+  assert.equal(shareFilename('food', true, '2026-11-14', '2026-11-22'), 'REPS NOTE-food-2026-11-14.png');
 });

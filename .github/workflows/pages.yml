@@ -1,4 +1,4 @@
-name: Test and publish REPNOTE
+name: Test and publish REPS NOTE
 
 on:
   push:

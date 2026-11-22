@@ -355,6 +355,7 @@ a {
   font-weight: 850;
   font-family: var(--numbers);
   line-height: 1;
+  white-space: nowrap;
 }
 
 .brand img {
@@ -588,10 +589,8 @@ a {
   background-color: #fff;
 }
 
-.date-control .date-label {
-  font-weight: 700;
-  font-size: 15px;
-  letter-spacing: -.02em;
+.date-control .ai-copy {
+  margin-left: auto;
 }
 
 .week {
@@ -2184,6 +2183,10 @@ dialog::backdrop {
     padding-left: 13px;
     padding-right: 13px;
   }
+  .brand {
+    padding-inline: 4px;
+    font-size: 1.45rem;
+  }
   .shell {
     margin-left: 196px;
     padding: 27px 24px 60px;
@@ -2381,8 +2384,9 @@ dialog::backdrop {
     gap: 6px;
     flex-wrap: wrap;
   }
-  .date-control .date-label {
-    font-size: .85rem;
+  .date-control .ai-copy {
+    padding: 6px 9px;
+    font-size: .8rem;
   }
   .date-control input {
     max-width: 145px;

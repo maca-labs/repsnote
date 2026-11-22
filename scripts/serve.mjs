@@ -16,4 +16,4 @@ http.createServer(async(req,res)=>{
     res.writeHead(200,{'Content-Type':types[path.extname(filename)]||'application/octet-stream','Cache-Control':'no-cache','X-Content-Type-Options':'nosniff'});
     res.end(req.method==='HEAD'?undefined:bytes);
   }catch{res.writeHead(404,{'Content-Type':'text/plain; charset=utf-8'});res.end('Not found');}
-}).listen(port,'127.0.0.1',()=>process.stdout.write(`REPNOTE: http://127.0.0.1:${port}/\n`));
+}).listen(port,'127.0.0.1',()=>process.stdout.write(`REPS NOTE: http://127.0.0.1:${port}/\n`));

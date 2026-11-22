@@ -27,5 +27,5 @@ export function planNutritionLines(plan) {
 
 export function shareFilename(kind, showDate, workoutDay, today) {
   const date = kind === 'plan' ? today : workoutDay;
-  return `repnote-${kind}${showDate ? '-' + date : ''}.png`;
+  return `REPS NOTE-${kind}${showDate ? '-' + date : ''}.png`;
 }
