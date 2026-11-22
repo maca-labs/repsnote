@@ -1,0 +1,76 @@
+// Exercise catalog for quick selection. All load values follow the exercise's
+// stated convention: single = per hand, total = total external load,
+// stack = the machine's displayed load, body = additional external load only.
+// Machine values are not directly comparable between different machines.
+export const EXERCISES = [
+  { id: 'barbell-bench', name: 'ベンチプレス', group: '胸', equipment: 'バーベル', aliases: ['ベンチ', 'BP', 'bench press', 'フラットベンチ'], load: 'total' },
+  { id: 'dumbbell-press', name: 'ダンベルプレス', group: '胸', equipment: 'ダンベル', aliases: ['DBプレス', 'ダンベルベンチ', 'ダンベルベンチプレス', 'dumbbell press'], load: 'single' },
+  { id: 'incline-barbell-bench', name: 'インクラインベンチプレス', group: '胸', equipment: 'バーベル', aliases: ['インクライン', 'インクラインベンチ', 'incline bench'], load: 'total' },
+  { id: 'incline-dumbbell-press', name: 'インクラインダンベルプレス', group: '胸', equipment: 'ダンベル', aliases: ['インクラインDBプレス', 'インクラインダンベルベンチ', 'incline dumbbell press'], load: 'single' },
+  { id: 'dumbbell-fly', name: 'ダンベルフライ', group: '胸', equipment: 'ダンベル', aliases: ['フライ', 'DBフライ', 'dumbbell fly'], load: 'single' },
+  { id: 'chest-press', name: 'チェストプレス', group: '胸', equipment: 'マシン', aliases: ['マシンチェストプレス', '胸プレス', 'chest press'], load: 'stack' },
+  { id: 'pec-fly', name: 'ペックフライ', group: '胸', equipment: 'マシン', aliases: ['ペックデック', 'バタフライ', 'マシンフライ', 'pec deck'], load: 'stack' },
+  { id: 'cable-fly', name: 'ケーブルフライ', group: '胸', equipment: 'ケーブル', aliases: ['ケーブルクロス', 'ケーブルクロスオーバー', 'cable fly'], load: 'stack' },
+  { id: 'dips', name: 'ディップス', group: '胸', equipment: '自重', aliases: ['加重ディップス', 'dips'], load: 'body' },
+  { id: 'pushup', name: 'プッシュアップ', group: '胸', equipment: '自重', aliases: ['腕立て', '腕立て伏せ', 'push up', 'pushup'], load: 'body' },
+
+  { id: 'lat-pulldown', name: 'ラットプルダウン', group: '背中', equipment: 'ケーブル', aliases: ['ラットプル', 'ラットプルダウンマシン', 'lat pulldown'], load: 'stack' },
+  { id: 'pullup', name: '懸垂', group: '背中', equipment: '自重', aliases: ['けんすい', 'チンニング', 'プルアップ', '加重懸垂', 'pull up', 'chin up'], load: 'body' },
+  { id: 'seated-cable-row', name: 'シーテッドロー', group: '背中', equipment: 'ケーブル', aliases: ['ケーブルロー', 'シーテッドロウ', 'ロープーリー', 'seated row'], load: 'stack' },
+  { id: 'barbell-row', name: 'ベントオーバーロー', group: '背中', equipment: 'バーベル', aliases: ['ベントロー', 'バーベルロー', 'ベントオーバーロウ', 'barbell row'], load: 'total' },
+  { id: 'one-arm-dumbbell-row', name: 'ワンハンドダンベルロー', group: '背中', equipment: 'ダンベル', aliases: ['ワンハンドロー', 'ワンアームロー', 'ダンベルロウ', 'one arm dumbbell row'], load: 'single' },
+  { id: 'machine-row', name: 'マシンロー', group: '背中', equipment: 'マシン', aliases: ['ローマシン', 'ローイングマシン', 'アイソラテラルロー', 'machine row'], load: 'stack' },
+  { id: 'chest-supported-row', name: 'チェストサポートロー', group: '背中', equipment: 'ダンベル', aliases: ['インクラインダンベルロー', '胸当てロー', 'chest supported row'], load: 'single' },
+  { id: 'straight-arm-pulldown', name: 'ストレートアームプルダウン', group: '背中', equipment: 'ケーブル', aliases: ['プルオーバー', 'ケーブルプルオーバー', 'straight arm pulldown'], load: 'stack' },
+  { id: 'deadlift', name: 'デッドリフト', group: '背中', equipment: 'バーベル', aliases: ['デッド', 'DL', 'コンベンショナルデッドリフト', 'deadlift'], load: 'total' },
+  { id: 'rack-pull', name: 'ハーフデッドリフト', group: '背中', equipment: 'バーベル', aliases: ['ラックプル', 'トップサイドデッドリフト', 'rack pull'], load: 'total' },
+  { id: 'back-extension', name: 'バックエクステンション', group: '背中', equipment: '自重', aliases: ['背筋', 'ハイパーエクステンション', 'back extension'], load: 'body' },
+
+  { id: 'dumbbell-shoulder-press', name: 'ダンベルショルダープレス', group: '肩', equipment: 'ダンベル', aliases: ['DBショルダープレス', 'ショルダープレス', 'dumbbell shoulder press'], load: 'single' },
+  { id: 'overhead-press', name: 'オーバーヘッドプレス', group: '肩', equipment: 'バーベル', aliases: ['OHP', 'ミリタリープレス', 'バーベルショルダープレス', 'overhead press'], load: 'total' },
+  { id: 'machine-shoulder-press', name: 'マシンショルダープレス', group: '肩', equipment: 'マシン', aliases: ['肩プレス', 'ショルダープレスマシン', 'machine shoulder press'], load: 'stack' },
+  { id: 'lateral-raise', name: 'サイドレイズ', group: '肩', equipment: 'ダンベル', aliases: ['ラテラルレイズ', 'ダンベルサイドレイズ', 'side raise', 'lateral raise'], load: 'single' },
+  { id: 'cable-lateral-raise', name: 'ケーブルサイドレイズ', group: '肩', equipment: 'ケーブル', aliases: ['ケーブルラテラルレイズ', 'cable lateral raise'], load: 'stack' },
+  { id: 'rear-delt-fly', name: 'リアデルトフライ', group: '肩', equipment: 'マシン', aliases: ['リアデルト', 'リバースペックデック', 'リアフライ', 'rear delt fly'], load: 'stack' },
+  { id: 'dumbbell-rear-raise', name: 'ダンベルリアレイズ', group: '肩', equipment: 'ダンベル', aliases: ['リアレイズ', 'ベントオーバーリアレイズ', 'reverse dumbbell fly'], load: 'single' },
+  { id: 'face-pull', name: 'フェイスプル', group: '肩', equipment: 'ケーブル', aliases: ['フェースプル', 'ロープフェイスプル', 'face pull'], load: 'stack' },
+
+  { id: 'barbell-curl', name: 'バーベルカール', group: '腕', equipment: 'バーベル', aliases: ['アームカール', 'BBカール', 'barbell curl'], load: 'total' },
+  { id: 'ez-bar-curl', name: 'EZバーカール', group: '腕', equipment: 'バーベル', aliases: ['EZカール', 'イージーバーカール', 'ez bar curl'], load: 'total' },
+  { id: 'dumbbell-curl', name: 'ダンベルカール', group: '腕', equipment: 'ダンベル', aliases: ['DBカール', 'アームカール', 'dumbbell curl'], load: 'single' },
+  { id: 'incline-dumbbell-curl', name: 'インクラインダンベルカール', group: '腕', equipment: 'ダンベル', aliases: ['インクラインカール', 'incline curl'], load: 'single' },
+  { id: 'hammer-curl', name: 'ハンマーカール', group: '腕', equipment: 'ダンベル', aliases: ['ハンマー', 'hammer curl'], load: 'single' },
+  { id: 'preacher-curl', name: 'プリーチャーカール', group: '腕', equipment: 'マシン', aliases: ['マシンカール', 'アームカールマシン', 'preacher curl'], load: 'stack' },
+  { id: 'triceps-pushdown', name: 'トライセプスプレスダウン', group: '腕', equipment: 'ケーブル', aliases: ['プレスダウン', 'プッシュダウン', 'トライセプスプッシュダウン', 'triceps pushdown'], load: 'stack' },
+  { id: 'rope-pushdown', name: 'ローププレスダウン', group: '腕', equipment: 'ケーブル', aliases: ['ローププッシュダウン', 'rope pushdown'], load: 'stack' },
+  { id: 'lying-triceps-extension', name: 'ライイングトライセプスエクステンション', group: '腕', equipment: 'バーベル', aliases: ['スカルクラッシャー', 'ライイングエクステンション', 'skull crusher'], load: 'total' },
+  { id: 'one-arm-triceps-extension', name: 'ワンハンドフレンチプレス', group: '腕', equipment: 'ダンベル', aliases: ['ワンハンドトライセプスエクステンション', '片手フレンチプレス', 'one arm triceps extension'], load: 'single' },
+
+  { id: 'back-squat', name: 'バーベルスクワット', group: '脚', equipment: 'バーベル', aliases: ['スクワット', 'バックスクワット', 'SQ', 'back squat'], load: 'total' },
+  { id: 'front-squat', name: 'フロントスクワット', group: '脚', equipment: 'バーベル', aliases: ['フロントSQ', 'front squat'], load: 'total' },
+  { id: 'leg-press', name: 'レッグプレス', group: '脚', equipment: 'マシン', aliases: ['脚プレス', '45度レッグプレス', 'leg press'], load: 'stack' },
+  { id: 'hack-squat', name: 'ハックスクワット', group: '脚', equipment: 'マシン', aliases: ['ハック', 'hack squat'], load: 'stack' },
+  { id: 'bulgarian-split-squat', name: 'ブルガリアンスクワット', group: '脚', equipment: 'ダンベル', aliases: ['ブルガリアン', 'スプリットスクワット', 'bulgarian split squat'], load: 'single' },
+  { id: 'romanian-deadlift', name: 'ルーマニアンデッドリフト', group: '脚', equipment: 'バーベル', aliases: ['RDL', 'ルーマニアン', 'romanian deadlift'], load: 'total' },
+  { id: 'leg-extension', name: 'レッグエクステンション', group: '脚', equipment: 'マシン', aliases: ['レッグエクステ', '脚伸ばし', 'leg extension'], load: 'stack' },
+  { id: 'leg-curl', name: 'レッグカール', group: '脚', equipment: 'マシン', aliases: ['シーテッドレッグカール', '脚曲げ', 'leg curl'], load: 'stack' },
+  { id: 'hip-thrust', name: 'ヒップスラスト', group: '脚', equipment: 'バーベル', aliases: ['ヒップリフト', 'hip thrust'], load: 'total' },
+  { id: 'hip-abduction', name: 'ヒップアブダクション', group: '脚', equipment: 'マシン', aliases: ['アブダクション', '外もも', 'hip abduction'], load: 'stack' },
+  { id: 'hip-adduction', name: 'ヒップアダクション', group: '脚', equipment: 'マシン', aliases: ['アダクション', '内もも', 'hip adduction'], load: 'stack' },
+  { id: 'calf-raise', name: 'マシンカーフレイズ', group: '脚', equipment: 'マシン', aliases: ['カーフレイズ', 'カーフ', 'ふくらはぎ', 'calf raise'], load: 'stack' },
+
+  { id: 'crunch', name: 'クランチ', group: '体幹', equipment: '自重', aliases: ['腹筋', '腹筋運動', 'crunch'], load: 'body' },
+  { id: 'cable-crunch', name: 'ケーブルクランチ', group: '体幹', equipment: 'ケーブル', aliases: ['ロープクランチ', 'cable crunch'], load: 'stack' },
+  { id: 'ab-crunch-machine', name: 'アブドミナルクランチ', group: '体幹', equipment: 'マシン', aliases: ['アブドミナル', '腹筋マシン', 'ab crunch'], load: 'stack' },
+  { id: 'hanging-leg-raise', name: 'ハンギングレッグレイズ', group: '体幹', equipment: '自重', aliases: ['レッグレイズ', 'ぶら下がり腹筋', 'hanging leg raise'], load: 'body' },
+  { id: 'ab-wheel', name: 'アブローラー', group: '体幹', equipment: '自重', aliases: ['腹筋ローラー', '膝コロ', '立ちコロ', 'ab wheel'], load: 'body' },
+];
+
+// Templates select exercises only. Reps, loads and completed sets come from
+// the user's own records, so copying a template never creates a new PR.
+export const ROUTINES = [
+  { id: 'push', name: 'PUSH', subtitle: '胸・肩・三頭', exerciseIds: ['dumbbell-press', 'incline-dumbbell-press', 'dumbbell-shoulder-press', 'lateral-raise', 'triceps-pushdown'] },
+  { id: 'pull', name: 'PULL', subtitle: '背中・二頭', exerciseIds: ['lat-pulldown', 'seated-cable-row', 'one-arm-dumbbell-row', 'face-pull', 'dumbbell-curl'] },
+  { id: 'legs', name: 'LEGS', subtitle: '脚・お尻', exerciseIds: ['leg-press', 'romanian-deadlift', 'leg-extension', 'leg-curl', 'calf-raise'] },
+  { id: 'shoulders-arms', name: '肩・腕', subtitle: '肩・二頭・三頭', exerciseIds: ['dumbbell-shoulder-press', 'lateral-raise', 'rear-delt-fly', 'incline-dumbbell-curl', 'rope-pushdown'] },
+];

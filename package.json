@@ -1,0 +1,1 @@
+{"name":"repnote","private":true,"version":"1.0.0","type":"module","scripts":{"start":"node scripts/serve.mjs","test":"node --test","check":"node --check dist/app.js && node --check dist/core.js && node --check scripts/serve.mjs"},"engines":{"node":">=20"}}
