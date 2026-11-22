@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { blankState, localDate, shiftDay } from '../dist/core.js';
+import { blankState, localDate, newSet, shiftDay } from '../dist/core.js';
 
 const dataKey='repnote:v1:real';
 const modeKey='repnote:mode';
@@ -136,6 +136,28 @@ test('an unreadable original can only be replaced by a successful confirmed rest
   await ui.importText(JSON.stringify(blankState()));
   await ui.click('confirm-import');
   assert.deepEqual(ui.read(),blankState());
+});
+
+test('the inline trash button removes its own set on the selected day and undo restores its position', async t=>{
+  const state=blankState();
+  const day=shiftDay(localDate(),-1);
+  const sets=[newSet(30,8), {...newSet(40,6),completed:true}, newSet(30,8)];
+  state.workouts[day]={title:'PUSH',note:'',exercises:[{id:'press',exerciseId:'dumbbell-press',sets}]};
+  const ui=await openApp(t,JSON.stringify(state));
+  await ui.click('day',{date:day});
+  const buttons=[...ui.app.innerHTML.matchAll(/<button\b[^>]*data-action="delete-set"[^>]*>/g)];
+  assert.equal(buttons.length,3);
+  const button=buttons[1][0];
+  const id=button.match(/data-id="([^"]+)"/)[1];
+  const date=button.match(/data-date="([^"]+)"/)[1];
+  assert.equal(id,sets[1].id);
+  assert.equal(date,day);
+  assert.match(button,/aria-label="ダンベルプレス セット2を削除"/);
+  await ui.click('delete-set',{id,date});
+  assert.deepEqual(ui.read().workouts[day].exercises[0].sets,[sets[0],sets[2]]);
+  await ui.click('delete-set',{id,date});
+  await ui.click('undo');
+  assert.deepEqual(ui.read().workouts,state.workouts);
 });
 
 test('undo cannot cross later changes, restored data or a mode switch',async t=>{
