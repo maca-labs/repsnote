@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {fromKg, newSet} from '../dist/core.js';
-import {editedWeightKg, weightRange} from '../dist/workout-input.js';
+import {editedWeightKg, weightPresets} from '../dist/workout-input.js';
 
 test('editing reps in lbs keeps the canonical kg even with equivalent decimal formatting', () => {
   const originalKg = 32.12345678;
@@ -23,8 +23,21 @@ test('quick weight selection and detailed corrections enforce the same completed
   }
 });
 
-test('dumbbell and machine weight lists honor the configured increment in the active unit', () => {
-  assert.deepEqual(weightRange(2.5, 'single', 'kg').slice(0, 4), [0, 2.5, 5, 7.5]);
-  assert.deepEqual(weightRange(5, 'single', 'lbs').slice(0, 4), [0, 5, 10, 15]);
-  assert.equal(weightRange(1.25, 'stack', 'kg').at(-1), 400);
+test('dumbbell presets use the same 2kg grid in both units, including near off-grid weights', () => {
+  const dumbbell={equipment:'ダンベル', load:'single'};
+  for (const unit of ['kg','lbs']) {
+    const presets=weightPresets(dumbbell, unit, 2.5);
+    assert.deepEqual(presets.map(p=>p.kg), Array.from({length:31}, (_,i)=>i*2));
+    assert.equal(presets[1].value, fromKg(2,unit));
+    const near=weightPresets(dumbbell, unit, 5, 11.5);
+    assert.deepEqual(near.map(p=>p.kg), [8,10,12,14,16]);
+    assert.equal(weightPresets({...dumbbell,load:'total'},unit,5)[1].kg,2);
+  }
+});
+
+test('other equipment keeps the configured step in kg or lbs regardless of its load label', () => {
+  const machine={equipment:'マシン',load:'single'};
+  assert.deepEqual(weightPresets(machine,'kg',2.5).slice(0,4).map(p=>p.value),[0,2.5,5,7.5]);
+  assert.deepEqual(weightPresets(machine,'lbs',5).slice(0,4).map(p=>p.value),[0,5,10,15]);
+  assert.equal(weightPresets({...machine,load:'stack'},'kg',1.25).at(-1).kg,400);
 });

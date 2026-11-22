@@ -498,6 +498,58 @@ a {
   border: 3px solid #ffffff;
 }
 
+.install-banner {
+  display: grid;
+  grid-template-columns: auto minmax(0,1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+}
+
+.install-banner strong {
+  font-size: .93rem;
+}
+
+.install-banner .button, #install-settings .button {
+  white-space: nowrap;
+}
+
+.install-steps {
+  margin: 0;
+  padding-inline-start: 1.5em;
+}
+
+.install-steps li + li {
+  margin-top: .65em;
+}
+
+@media (max-width: 520px) {
+  .install-banner {
+    grid-template-columns: auto 1fr auto;
+    gap: 8px;
+  }
+  .install-banner strong {
+    font-size: .83rem;
+  }
+  .install-banner .button {
+    grid-column: 2;
+    justify-self: start;
+    padding: 5px 10px;
+    min-height: 36px;
+  }
+  .install-banner img, .install-banner .icon-button {
+    grid-row: 1 / 3;
+  }
+  .install-banner .icon-button {
+    grid-column: 3;
+    align-self: start;
+  }
+}
+
 .demo-banner {
   background: #f0f0f0;
   border: 1px solid #dbdbdb;
@@ -2874,3 +2926,44 @@ dialog::backdrop {
     font-size: 1rem;
   }
 }
+
+.cardio-row, .cardio-labels {
+  display: grid;
+  grid-template-columns: 30px minmax(65px,1fr) minmax(60px,.6fr) repeat(3,44px);
+  align-items: center;
+  gap: 5px 8px;
+}
+.cardio-labels {
+  padding: 10px 0 5px;
+  color: var(--muted);
+  font-size: .73rem;
+  text-align: center;
+}
+.cardio-row {
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+}
+.cardio-row .set-num { text-align: center; font-weight: 650; }
+.cardio-row select, .cardio-row .cardio-edit { min-width: 0; width: 100%; min-height: 44px; }
+.cardio-row select { padding: 5px; font-size: 1rem; }
+.cardio-row .cardio-edit { padding: 4px; gap: 4px; }
+.cardio-row .complete-check, .cardio-row .icon-button { width: 44px; height: 44px; justify-self: center; }
+.cardio-row.done select { background-color: var(--soft); }
+.cardio-values, .cardio-previous {
+  grid-column: 2/-1;
+  font-size: .76rem;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+.cardio-previous { color: var(--muted); }
+
+@media (max-width: 480px) {
+  .cardio-row, .cardio-labels {
+    grid-template-columns: 18px minmax(54px,1fr) minmax(41px,.75fr) repeat(3,44px);
+    column-gap: 3px;
+  }
+  .cardio-row .cardio-edit .icon { display: none; }
+}
+
+.cardio-form-fields .field { display: flex; flex-direction: column; }
+.cardio-form-fields input { margin-top: auto; }

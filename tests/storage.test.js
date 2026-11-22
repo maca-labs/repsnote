@@ -48,7 +48,64 @@ async function openApp(t, original=JSON.stringify(blankState())){
   return {app,modal,toast,click,storage,values,events,windowEvents,importText,read:()=>JSON.parse(values.get(dataKey))};
 }
 
-test('set table unit switches update all displays without rewriting recorded weights', async t=>{
+test('cardio records use time and optional metrics throughout editing, completion and draft copies',async t=>{
+  const ui=await openApp(t);
+  const exercise='cardio-treadmill',day=localDate();
+  const entries=()=>ui.read().workouts[day].exercises[0];
+  await ui.click('add-exercise');
+  await ui.click('search-group',{group:'有酸素'});
+  assert.equal((ui.modal.innerHTML.match(/class="option-main"/g)??[]).length,10);
+  await ui.click('choose-exercise',{id:exercise});
+  const {id:instance,sets:[initial]}=entries(),id=initial.id;
+  assert.deepEqual(initial,{id,minutes:10,distanceKm:null,completed:false});
+  assert.doesNotMatch(ui.app.innerHTML,/data-change="set-(weight|reps)"/);
+  assert.match(ui.app.innerHTML,/data-change="cardio-minutes"/);
+  const minutes=value=>ui.events.change({target:{dataset:{change:'cardio-minutes',id},value}});
+  await minutes('30');
+  await minutes('-1');
+  assert.equal(entries().sets[0].minutes,30);
+  await ui.click('edit-set',{id});
+  assert.doesNotMatch(ui.modal.innerHTML,/name="(kg|reps|inputUnit)"/);
+  const error={};
+  const form={querySelector:()=>error};
+  ui.modal.contains=element=>element===form;
+  const descriptor=Object.getOwnPropertyDescriptor(globalThis,'FormData');
+  let values={minutes:'22.25',distanceKm:'3.15',inclinePct:'-1.5',speedKmh:'8.5',kcal:'0',steps:'2000.5'};
+  Object.defineProperty(globalThis,'FormData',{configurable:true,value:class {get(key){return values[key];}}});
+  t.after(()=>Object.defineProperty(globalThis,'FormData',descriptor));
+  const submit=()=>ui.modal.onsubmit({preventDefault(){},target:form});
+  await submit();
+  assert.match(error.textContent,/歩数/);
+  assert.equal(entries().sets[0].minutes,30);
+  values.steps='2000';
+  await submit();
+  const saved={id,completed:false,minutes:22.25,distanceKm:3.15,inclinePct:-1.5,speedKmh:8.5,kcal:0,steps:2000};
+  assert.deepEqual(entries().sets[0],saved);
+  await ui.click('complete-set',{id,exercise});
+  assert.equal(entries().sets[0].completed,true);
+  assert.equal(ui.read().settings.exerciseUnits?.[exercise],undefined);
+  assert.equal(ui.read().timer,null);
+  await ui.click('add-three-sets',{id:instance});
+  assert.equal(new Set(entries().sets.map(set=>set.id)).size,4);
+  for(const set of entries().sets.slice(1))assert.deepEqual({...set,id},saved);
+  await ui.click('edit-set',{id});
+  values.distanceKm='';
+  values.kcal='';
+  await submit();
+  assert.equal(entries().sets[0].distanceKm,null);
+  assert.equal(entries().sets[0].kcal,null);
+  await ui.click('delete-set',{date:day,id});
+  assert.equal(entries().sets.length,3);
+  await ui.click('undo');
+  assert.equal(entries().sets[0].id,id);
+  await ui.click('day',{date:shiftDay(day,1)});
+  await ui.click('copy-previous');
+  const copies=ui.read().workouts[shiftDay(day,1)].exercises[0].sets;
+  assert.equal(copies.length,1);
+  assert.deepEqual(copies[0],{...entries().sets[0],id:copies[0].id,completed:false});
+});
+
+test('set table switches pin the exercise unit independently of the header and other exercises', async t=>{
   const state=blankState();
   const day=localDate();
   state.workouts[day]={title:'PUSH',note:'',exercises:[
@@ -56,13 +113,62 @@ test('set table unit switches update all displays without rewriting recorded wei
     {id:'leg',exerciseId:'leg-press',sets:[newSet(134.5,8)]}
   ]};
   const ui=await openApp(t,JSON.stringify(state));
-  for(const [instance,unit] of [['press','lbs'],['leg','kg']]){
-    assert.ok(ui.app.innerHTML.includes(`data-instance="${instance}">${unit}</button>`));
-    await ui.click('unit',{instance,unit});
-    assert.equal(ui.read().settings.unit,unit);
-    assert.deepEqual(ui.read().workouts,state.workouts);
-    assert.equal(ui.app.innerHTML.split(`data-unit="${unit}" class="active" aria-pressed="true"`).length-1,3);
-  }
+  const active=(id,u)=>ui.app.innerHTML.includes(`data-unit="${u}" class="active" aria-pressed="true" data-instance="${id}"`);
+  await ui.click('unit',{instance:'press',unit:'lbs'});
+  assert.equal(ui.read().settings.unit,'kg');
+  assert.ok(active('press','lbs'));
+  assert.ok(active('leg','kg'));
+  await ui.click('unit',{instance:'leg',unit:'kg'});
+  await ui.click('unit',{unit:'lbs'});
+  assert.equal(ui.read().settings.unit,'lbs');
+  assert.deepEqual(ui.read().settings.exerciseUnits,{'dumbbell-press':'lbs','leg-press':'kg'});
+  assert.ok(active('press','lbs'));
+  assert.ok(active('leg','kg'));
+  assert.deepEqual(ui.read().workouts,state.workouts);
+});
+
+test('each completed exercise starts its chosen duration only on opt-in, and reset uses that duration', async t=>{
+  let now=Date.now();
+  t.mock.method(Date,'now',()=>now);
+  const state=blankState();
+  state.settings.exerciseRestSeconds={'leg-press':120};
+  const day=localDate();
+  state.workouts[day]={title:'Workout',note:'',exercises:['leg-press','dumbbell-press'].map(exerciseId=>({
+    id:'entry-'+exerciseId,exerciseId,sets:[{...newSet(20,10),id:'set-'+exerciseId,assisted:true}]
+  }))};
+  const ui=await openApp(t,JSON.stringify(state));
+  const complete=exercise=>ui.click('complete-set',{id:'set-'+exercise,exercise});
+  await complete('leg-press');
+  assert.equal(ui.read().timer,null);
+  assert.equal(ui.read().settings.exerciseUnits['leg-press'],'kg');
+  await ui.events.change({target:{dataset:{change:'setting-auto'},checked:true}});
+  await complete('dumbbell-press');
+  assert.equal(ui.read().timer.duration,90);
+  await complete('leg-press'); // Return to draft.
+  await complete('leg-press');
+  assert.equal(ui.read().timer.duration,120);
+  now+=7000;
+  await ui.click('pause-timer');
+  assert.equal(ui.read().timer.remaining,113);
+  assert.equal(ui.read().timer.endAt,null);
+  await ui.click('pause-timer');
+  assert.equal(ui.read().timer.endAt,now+113000);
+  await ui.click('reset-timer');
+  assert.equal(ui.read().timer.endAt,now+120000);
+});
+
+test('the saved duration of a paused timer survives reload, while old timers remain usable',async t=>{
+  const state=blankState();
+  state.timer={duration:35,endAt:null,remaining:22,finished:false};
+  const ui=await openApp(t,JSON.stringify(state));
+  await ui.click('reset-timer');
+  assert.equal(ui.read().timer.remaining,35);
+  const legacy={...state,timer:{endAt:Date.now()+60000,remaining:60,finished:false}};
+  ui.values.set(dataKey,JSON.stringify(legacy));
+  ui.windowEvents.storage({key:dataKey,storageArea:ui.storage});
+  await ui.click('reset-timer');
+  assert.equal(ui.read().timer.duration,60);
+  assert.equal(ui.read().timer.remaining,60);
 });
 
 test('a failed write restores both the screen and the stored state', async t=>{

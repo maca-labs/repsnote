@@ -19,6 +19,8 @@ jobs:
       - uses: actions/checkout@v6
       - run: npm run check
       - run: npm test
+      - name: Version the offline cache
+        run: sed -i "s/__BUILD_REVISION__/$GITHUB_SHA/" dist/sw.js
       - uses: actions/upload-pages-artifact@v4
         with:
           path: dist

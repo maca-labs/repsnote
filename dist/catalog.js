@@ -64,6 +64,17 @@ export const EXERCISES = [
   { id: 'ab-crunch-machine', name: 'アブドミナルクランチ', group: '体幹', equipment: 'マシン', aliases: ['アブドミナル', '腹筋マシン', 'ab crunch'], load: 'stack' },
   { id: 'hanging-leg-raise', name: 'ハンギングレッグレイズ', group: '体幹', equipment: '自重', aliases: ['レッグレイズ', 'ぶら下がり腹筋', 'hanging leg raise'], load: 'body' },
   { id: 'ab-wheel', name: 'アブローラー', group: '体幹', equipment: '自重', aliases: ['腹筋ローラー', '膝コロ', '立ちコロ', 'ab wheel'], load: 'body' },
+
+  { id: 'cardio-walking', name: 'ウォーキング', group: '有酸素', equipment: '自重', aliases: ['歩行', '散歩', 'ウォーク', 'walking', 'walk'], load: 'cardio' },
+  { id: 'cardio-jogging', name: 'ジョギング', group: '有酸素', equipment: '自重', aliases: ['ジョグ', '軽いラン', 'jogging', 'jog'], load: 'cardio' },
+  { id: 'cardio-running', name: 'ランニング', group: '有酸素', equipment: '自重', aliases: ['ラン', 'マラソン', '走る', 'running', 'run'], load: 'cardio' },
+  { id: 'cardio-treadmill', name: 'トレッドミル', group: '有酸素', equipment: 'マシン', aliases: ['ランニングマシン', 'ルームランナー', '傾斜ウォーク', 'treadmill'], load: 'cardio' },
+  { id: 'cardio-cycling', name: 'サイクリング', group: '有酸素', equipment: '自転車', aliases: ['自転車', 'ロードバイク', 'cycling', 'bicycle'], load: 'cardio' },
+  { id: 'cardio-stationary-bike', name: 'エアロバイク', group: '有酸素', equipment: 'マシン', aliases: ['フィットネスバイク', 'スピンバイク', 'stationary bike', 'exercise bike'], load: 'cardio' },
+  { id: 'cardio-elliptical', name: 'クロストレーナー', group: '有酸素', equipment: 'マシン', aliases: ['エリプティカル', 'elliptical', 'cross trainer'], load: 'cardio' },
+  { id: 'cardio-stair-climber', name: 'ステアクライマー', group: '有酸素', equipment: 'マシン', aliases: ['階段昇降', 'ステアマスター', 'ステッパー', 'stair climber', 'stairmaster'], load: 'cardio' },
+  { id: 'cardio-swimming', name: '水泳', group: '有酸素', equipment: 'プール', aliases: ['スイミング', '泳ぐ', 'クロール', 'swimming', 'swim'], load: 'cardio' },
+  { id: 'cardio-jump-rope', name: '縄跳び', group: '有酸素', equipment: '縄跳び', aliases: ['なわとび', 'ジャンプロープ', 'jump rope', 'jumping rope', 'skipping'], load: 'cardio' },
 ];
 
 // Templates select exercises only. Reps, loads and completed sets come from

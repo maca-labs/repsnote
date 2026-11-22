@@ -10,12 +10,63 @@ export function shiftDay(d,n) { const t=parseDay(d); t.setDate(t.getDate()+n); r
 export const daysBetween = (a,b) => Math.round((Date.parse(`${b}T00:00:00Z`)-Date.parse(`${a}T00:00:00Z`))/86400000);
 export const fromKg = (kg,u) => u==='lbs' ? kg/LB_KG : kg;
 export const toKg = (n,u) => u==='lbs' ? n*LB_KG : n;
+const validUnit = unit => unit === 'kg' || unit === 'lbs';
+export function exerciseUnit(state, exerciseId) {
+  const units = state.settings.exerciseUnits;
+  return units && Object.hasOwn(units, exerciseId) ? units[exerciseId] : state.settings.unit;
+}
+function requireKnownExercise(state, exerciseId) {
+  if (!EXERCISES.some(ex => ex.id === exerciseId) && !state.customExercises.some(ex => ex.id === exerciseId)) {
+    throw new Error('種目が見つかりません。');
+  }
+}
+export function setExerciseUnit(state, exerciseId, unit) {
+  if (!validUnit(unit)) throw new Error('重量の単位が正しくありません。');
+  requireKnownExercise(state, exerciseId);
+  state.settings.exerciseUnits = {...state.settings.exerciseUnits, [exerciseId]: unit};
+}
+const validRestSeconds = seconds => Number.isInteger(seconds) && seconds >= 10 && seconds <= 3600;
+export function exerciseRestSeconds(state, exerciseId) {
+  const rests = state.settings.exerciseRestSeconds;
+  return rests && Object.hasOwn(rests, exerciseId) ? rests[exerciseId] : state.settings.timerSeconds;
+}
+export function setExerciseRestSeconds(state, exerciseId, seconds) {
+  requireKnownExercise(state, exerciseId);
+  if (seconds === null) {
+    if (state.settings.exerciseRestSeconds) delete state.settings.exerciseRestSeconds[exerciseId];
+    return;
+  }
+  if (!validRestSeconds(seconds)) throw new Error('休憩時間は10～3600秒の整数で入力してください。');
+  state.settings.exerciseRestSeconds = {...state.settings.exerciseRestSeconds, [exerciseId]: seconds};
+}
 export const fmt = (n,dec=1) => Number(n).toLocaleString('ja-JP',{maximumFractionDigits:dec});
-export const eligible = s => s.completed && s.kind==='work' && !s.assisted && Number.isFinite(s.kg) && s.kg>=0 && Number.isInteger(s.reps) && s.reps>0;
+export const CARDIO_FIELDS = [
+  {key:'minutes', label:'時間', unit:'分', min:0.01, max:1440, step:0.01, required:true},
+  {key:'distanceKm', label:'距離', unit:'km', min:0, max:1000, step:0.01, required:false},
+  {key:'inclinePct', label:'傾斜', unit:'%', min:-100, max:100, step:0.01, required:false},
+  {key:'speedKmh', label:'速度', unit:'km/h', min:0, max:300, step:0.01, required:false},
+  {key:'kcal', label:'消費カロリー', unit:'kcal', min:0, max:100000, step:0.01, required:false},
+  {key:'steps', label:'歩数', unit:'歩', min:0, max:1000000, step:1, required:false},
+];
+const cardioIds = new Set(EXERCISES.filter(ex => ex.load === 'cardio').map(ex => ex.id));
+export function validCardioValue(field, value) {
+  if (value == null) return !field.required;
+  if (!Number.isFinite(value) || value < field.min || value > field.max) return false;
+  return field.step === 1 ? Number.isSafeInteger(value) : Number(value.toFixed(2)) === value;
+}
+export function cardioDetails(set) {
+  const prefix = {inclinePct:'傾斜 ', speedKmh:'速度 ', kcal:'消費 '};
+  return CARDIO_FIELDS.filter(field => set[field.key] != null).map(({key,unit}) => {
+    const space = /^[a-z]/.test(unit) ? ' ' : '';
+    return `${prefix[key] ?? ''}${fmt(set[key], 2)}${space}${unit}`;
+  }).join(' / ');
+}
+export const eligible = s => !Object.hasOwn(s, 'minutes') && s.completed && s.kind==='work' && !s.assisted && Number.isFinite(s.kg) && s.kg>=0 && Number.isInteger(s.reps) && s.reps>0;
 export function blankState() {
   return {schemaVersion:SCHEMA,settings:{unit:'kg',autoTimer:false,timerSeconds:90,weightStep:2.5},favorites:['dumbbell-press','leg-press','lat-pulldown','seated-cable-row','lateral-raise'],customExercises:[],routines:[],workouts:{},meals:{},foods:[],body:[],plan:null,timer:null};
 }
 export const newSet = (kg=0,reps=10) => ({id:uid(),kg,reps,completed:false,kind:'work',assisted:false,rpe:null});
+export const newCardioSet = () => ({id:uid(), minutes:10, distanceKm:null, completed:false});
 export const cloneSet = s => ({...s,id:uid(),completed:false});
 export const cloneExercise = e => ({...e,id:uid(),sets:e.sets.map(cloneSet)});
 export function allSets(state) {
@@ -43,9 +94,11 @@ export function records(state) {
   return out;
 }
 export function workoutStats(w) {
-  const exercises=w?.exercises??[];
-  const done=exercises.flatMap(e=>e.sets).filter(s=>s.completed && s.reps>0);
-  return {sets:done.length,total:exercises.reduce((n,e)=>n+e.sets.length,0),volume:done.reduce((n,s)=>n+s.kg*s.reps,0),exercises:exercises.length};
+  const exercises = w?.exercises ?? [];
+  const rows = exercises.flatMap(exercise => exercise.sets);
+  const done = rows.filter(set => set.completed && (set.minutes > 0 || set.reps > 0));
+  const volume = done.reduce((sum, set) => Object.hasOwn(set, 'minutes') ? sum : sum + set.kg * set.reps, 0);
+  return {sets:done.length, total:rows.length, volume, exercises:exercises.length};
 }
 export function lastExercise(state,id,before) {
   const dates=Object.keys(state.workouts).filter(d=>d<before).sort().reverse();
@@ -94,10 +147,22 @@ export function validateState(input,exerciseIds=[]) {
   const nutrition=f=>obj(f) && str(f.name) && ['serving','100g'].includes(f.basis) && ['kcal','p','f','c'].every(k=>num(f[k],0,100000));
   if(!obj(input)||input.schemaVersion!==SCHEMA)bad('この形式・バージョンのバックアップには対応していません。');
   const s=input;
-  if(!obj(s.settings)||!['kg','lbs'].includes(s.settings.unit)||typeof s.settings.autoTimer!=='boolean'||!num(s.settings.timerSeconds,10,3600)||!num(s.settings.weightStep,.25,20))bad('設定が正しくありません。');
+  if(!obj(s.settings)||!validUnit(s.settings.unit)||typeof s.settings.autoTimer!=='boolean'||!num(s.settings.timerSeconds,10,3600)||!num(s.settings.weightStep,.25,20))bad('設定が正しくありません。');
   if(!array(s.customExercises)||!unique(s.customExercises.map(e=>e?.id)))bad('カスタム種目が正しくありません。');
   for(const e of s.customExercises)if(!obj(e)||!id(e.id)||!str(e.name)||!['胸','背中','肩','腕','脚','体幹'].includes(e.group)||!['バーベル','ダンベル','マシン','ケーブル','自重'].includes(e.equipment)||!['single','total','stack','body'].includes(e.load)||!array(e.aliases,50)||!e.aliases.every(a=>str(a)))bad('種目の値が正しくありません。');
   const known=new Set([...exerciseIds,...s.customExercises.map(e=>e.id)]);
+  if (Object.hasOwn(s.settings, 'exerciseUnits')) {
+    const units = s.settings.exerciseUnits;
+    if (!obj(units) || !Object.entries(units).every(([id, unit]) => known.has(id) && validUnit(unit))) {
+      bad('種目ごとの重量単位が正しくありません。');
+    }
+  }
+  if (Object.hasOwn(s.settings, 'exerciseRestSeconds')) {
+    const rests = s.settings.exerciseRestSeconds;
+    if (!obj(rests) || !Object.entries(rests).every(([id, seconds]) => known.has(id) && validRestSeconds(seconds))) {
+      bad('種目ごとの休憩時間が正しくありません。');
+    }
+  }
   if(s.customExercises.some(e=>exerciseIds.includes(e.id)))bad('種目IDが重複しています。');
   if(!array(s.favorites)||!s.favorites.every(id=>known.has(id))||!unique(s.favorites)||!array(s.routines))bad('お気に入り・メニューが正しくありません。');
   for(const r of s.routines)if(!obj(r)||!id(r.id)||!str(r.name,80)||!str(r.subtitle)||!array(r.exerciseIds)||!r.exerciseIds.every(id=>known.has(id)))bad('保存メニューが正しくありません。');
@@ -110,7 +175,15 @@ export function validateState(input,exerciseIds=[]) {
       if(!obj(e)||!id(e.id)||!known.has(e.exerciseId)||!str(e.note??'',2000)||!array(e.sets))bad('セットの種目が正しくありません。');
       allIds.push(e.id);
       for(const set of e.sets) {
-        if(!obj(set)||!id(set.id)||!num(set.kg,0,5000)||!Number.isInteger(set.reps)||!num(set.reps,1,999)||typeof set.completed!=='boolean'||!['work','warmup'].includes(set.kind)||typeof set.assisted!=='boolean'||!(set.rpe==null||num(set.rpe,1,10)))bad('重量・回数・セットの値が正しくありません。');
+        if (!obj(set) || !id(set.id) || typeof set.completed !== 'boolean') bad('セットの値が正しくありません。');
+        if (cardioIds.has(e.exerciseId)) {
+          const hasStrengthFields = ['kg','reps','kind','assisted','rpe'].some(key => Object.hasOwn(set, key));
+          if (hasStrengthFields || !CARDIO_FIELDS.every(field => validCardioValue(field, set[field.key]))) {
+            bad('有酸素運動の記録が正しくありません。');
+          }
+        } else if (CARDIO_FIELDS.some(field => Object.hasOwn(set, field.key)) || !num(set.kg,0,5000) || !Number.isInteger(set.reps) || !num(set.reps,1,999) || !['work','warmup'].includes(set.kind) || typeof set.assisted!=='boolean' || !(set.rpe==null||num(set.rpe,1,10))) {
+          bad('重量・回数・セットの値が正しくありません。');
+        }
         allIds.push(set.id);
       }
     }

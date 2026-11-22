@@ -1,5 +1,5 @@
 import { EXERCISES } from './catalog.js';
-import { fmt, fromKg, mealTotals } from './core.js';
+import { cardioDetails, exerciseUnit, fmt, fromKg, mealTotals } from './core.js';
 import { planNutritionLines, setDetails } from './share.js';
 
 const LOAD_LABELS = {single: '片手', total: '合計', stack: 'マシン表示', body: '追加重量'};
@@ -7,12 +7,16 @@ const LOAD_LABELS = {single: '片手', total: '合計', stack: 'マシン表示'
 function workoutLines(state, day) {
   const workout = state.workouts[day];
   const catalog = new Map([...EXERCISES, ...state.customExercises].map(ex => [ex.id, ex]));
-  const unit = state.settings.unit;
   const lines = [];
   for (const entry of workout?.exercises ?? []) {
     const done = entry.sets.filter(set => set.completed);
     if (!done.length) continue;
     const exercise = catalog.get(entry.exerciseId);
+    if (exercise?.load === 'cardio') {
+      lines.push(`・${exercise.name}（有酸素）　${done.length}回：${done.map(cardioDetails).join('、')}`);
+      continue;
+    }
+    const unit = exerciseUnit(state, entry.exerciseId);
     const load = exercise?.id === 'cable-fly' ? '片側の表示重量' : LOAD_LABELS[exercise?.load] ?? '記録重量';
     const sets = done.map(set => {
       const weight = fmt(fromKg(set.kg, unit), 2);
