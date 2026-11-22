@@ -937,6 +937,7 @@ a {
 
 .exercise-footer {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
@@ -2498,6 +2499,7 @@ dialog::backdrop {
   }
   .exercise-footer .text-button {
     font-size: 12px;
+    min-height: 44px;
   }
   .exercise-note {
     padding-left: 13px;

@@ -99,7 +99,15 @@ function commit(message){
   return true;
 }
 function toast(message,undo=false){const el=document.querySelector('#toast');el.innerHTML=`<span>${h(message)}</span>${undo?'<button data-action="undo">元に戻す</button>':''}`;el.classList.add('visible');clearTimeout(toastTimeout);toastTimeout=setTimeout(()=>el.classList.remove('visible'),undo?8000:3500);}
-function undoable(fn,message){undoState=structuredClone(state);fn();undoFingerprint=JSON.stringify({...state,timer:null});if(save()){render();toast(message,true);}}
+function undoable(fn,message){
+  undoState=structuredClone(state);
+  fn();
+  undoFingerprint=JSON.stringify({...state,timer:null});
+  if(!save())return false;
+  render();
+  toast(message,true);
+  return true;
+}
 const catalog=()=>[...EXERCISES,...state.customExercises];
 const exercise=id=>catalog().find(e=>e.id===id)??{id,name:'未登録の種目',group:'',equipment:'',load:'total'};
 const getWorkout=()=>state.workouts[day]??{title:'WORKOUT',exercises:[],note:''};
@@ -185,7 +193,11 @@ function focusSet(id, field = 'set-weight', reveal = false) {
   el?.focus({preventScroll:true});
   if (reveal) el?.scrollIntoView({block:'nearest'});
 }
-function renderExercise(inst,prs){const ex=exercise(inst.exerciseId),last=C.lastExercise(state,ex.id,day);return `<article class="exercise-card" id="exercise-${h(inst.id)}"><div class="exercise-head"><div class="row"><div class="badge-icon">${icon('dumbbell')}</div><div><div class="exercise-title">${h(ex.name)}</div><div class="exercise-sub">${h(ex.group)} · ${h(ex.equipment)} · ${h(loadLabel(ex))}</div></div></div><div class="exercise-tools">${ib('favorite',state.favorites.includes(ex.id)?'お気に入りから外す':'お気に入りに追加','star',`data-id="${h(ex.id)}"`,state.favorites.includes(ex.id)?'active':'')}${ib('exercise-menu','種目の編集・削除','more',`data-id="${h(inst.id)}"`)}</div></div><div class="set-table"><div class="set-grid labels"><span>SET</span><span class="previous">前回</span><span>重量 ${unit()}</span><span>回数</span><span>完了</span><span>複製</span><span></span><span>削除</span></div>${inst.sets.map((s,i)=>{const prev=last?.sets[i]??last?.sets.at(-1),isPR=prs[ex.id]?.id===s.id;return `<div class="set-grid set-row ${s.completed?'done':''}"><div class="set-num">${s.kind==='warmup'?'W':i+1}${isPR?icon('crown','tiny-crown'):s.assisted?'<span class="small">補</span>':''}</div><div class="previous ${prev?'has-previous':''}">${prev?`<span class="previous-label">前回 </span>${weight(prev.kg)} × ${prev.reps}`:'—'}</div><select aria-label="${h(ex.name)} セット${i+1}の重量" data-change="set-weight" data-load="${ex.load}" data-id="${h(s.id)}">${weightOptions(s,last)}</select><select aria-label="${h(ex.name)} セット${i+1}の回数" data-change="set-reps" data-id="${h(s.id)}">${options([...new Set([...Array.from({length:30},(_,i)=>i+1),40,50,60,100,s.reps])].sort((a,b)=>a-b),s.reps,n=>n,'<option value="custom">直接入力…</option>')}</select><button class="complete-check ${s.completed?'checked':''}" data-action="complete-set" data-id="${h(s.id)}" data-exercise="${h(ex.id)}" aria-label="${h(ex.name)} セット${i+1}を${s.completed?'未完了にする':'完了にする'}" aria-pressed="${s.completed}">${icon('check')}</button>${ib('copy-set',`${ex.name} セット${i+1}をコピー`,'copy',`data-id="${h(s.id)}" data-instance="${h(inst.id)}"`)}${ib('edit-set',`${ex.name} セット${i+1}の詳細を編集`,'more',`data-id="${h(s.id)}"`)}${ib('delete-set',`${ex.name} セット${i+1}を削除`,'trash',`data-id="${h(s.id)}" data-date="${day}"`)}</div>`;}).join('')}</div><div class="exercise-footer"><button class="text-button" data-action="add-set" data-id="${h(inst.id)}">${icon('plus')}セットを追加</button><button class="text-button" data-action="copy-exercise-previous" data-id="${h(inst.id)}">${icon('history')}${last?`${dateLabel(last.date)}をコピー`:'前回のセット'}</button></div>${inst.note?`<div class="exercise-note">${h(inst.note)}</div>`:''}</article>`;}
+function renderExercise(inst,prs){const ex=exercise(inst.exerciseId),last=C.lastExercise(state,ex.id,day);return `<article class="exercise-card" id="exercise-${h(inst.id)}"><div class="exercise-head"><div class="row"><div class="badge-icon">${icon('dumbbell')}</div><div><div class="exercise-title">${h(ex.name)}</div><div class="exercise-sub">${h(ex.group)} · ${h(ex.equipment)} · ${h(loadLabel(ex))}</div></div></div><div class="exercise-tools">${ib('favorite',state.favorites.includes(ex.id)?'お気に入りから外す':'お気に入りに追加','star',`data-id="${h(ex.id)}"`,state.favorites.includes(ex.id)?'active':'')}${ib('exercise-menu','種目の編集・削除','more',`data-id="${h(inst.id)}"`)}</div></div><div class="set-table"><div class="set-grid labels"><span>SET</span><span class="previous">前回</span><span>重量 ${unit()}</span><span>回数</span><span>完了</span><span>複製</span><span></span><span>削除</span></div>${inst.sets.map((s,i)=>{const prev=last?.sets[i]??last?.sets.at(-1),isPR=prs[ex.id]?.id===s.id;return `<div class="set-grid set-row ${s.completed?'done':''}"><div class="set-num">${s.kind==='warmup'?'W':i+1}${isPR?icon('crown','tiny-crown'):s.assisted?'<span class="small">補</span>':''}</div><div class="previous ${prev?'has-previous':''}">${prev?`<span class="previous-label">前回 </span>${weight(prev.kg)} × ${prev.reps}`:'—'}</div><select aria-label="${h(ex.name)} セット${i+1}の重量" data-change="set-weight" data-load="${ex.load}" data-id="${h(s.id)}">${weightOptions(s,last)}</select><select aria-label="${h(ex.name)} セット${i+1}の回数" data-change="set-reps" data-id="${h(s.id)}">${options([...new Set([...Array.from({length:30},(_,i)=>i+1),40,50,60,100,s.reps])].sort((a,b)=>a-b),s.reps,n=>n,'<option value="custom">直接入力…</option>')}</select><button class="complete-check ${s.completed?'checked':''}" data-action="complete-set" data-id="${h(s.id)}" data-exercise="${h(ex.id)}" aria-label="${h(ex.name)} セット${i+1}を${s.completed?'未完了にする':'完了にする'}" aria-pressed="${s.completed}">${icon('check')}</button>${ib('copy-set',`${ex.name} セット${i+1}をコピー`,'copy',`data-id="${h(s.id)}" data-instance="${h(inst.id)}"`)}${ib('edit-set',`${ex.name} セット${i+1}の詳細を編集`,'more',`data-id="${h(s.id)}"`)}${ib('delete-set',`${ex.name} セット${i+1}を削除`,'trash',`data-id="${h(s.id)}" data-date="${day}"`)}</div>`;}).join('')}</div><div class="exercise-footer">
+  <button type="button" class="text-button" data-action="add-set" data-id="${h(inst.id)}">${icon('plus')}セットを追加</button>
+  <button type="button" class="text-button" data-action="add-three-sets" data-id="${h(inst.id)}" title="この種目の最後のセットを3つ複製" ${inst.sets.length?'':'disabled'}>${icon('copy')}同じセットを3つ追加</button>
+  <button type="button" class="text-button" data-action="copy-exercise-previous" data-id="${h(inst.id)}">${icon('history')}${last?`${dateLabel(last.date)}をコピー`:'前回のセット'}</button>
+</div>${inst.note?`<div class="exercise-note">${h(inst.note)}</div>`:''}</article>`;}
 function macroRows(t,plan=state.plan){return [['p','P','たんぱく質','#202020'],['f','F','脂質','#656565'],['c','C','炭水化物','#969696']].map(([key,abbr,label,color])=>`<div class="progress-row"><div class="progress-info"><span class="progress-label"><i class="macro-dot" style="background:${color}"></i><strong>${abbr}</strong>${label}</span><span class="mono">${nf(t[key])}<span class="muted"> / ${plan?.[key]>0?nf(plan[key])+' g':'目標未設定'}</span></span></div><div class="progress-track"><div class="progress-fill" style="background:${color};width:${progress(t[key],plan?.[key])}%"></div></div></div>`).join('');}
 function calorieRing(t,big=false){const target=state.plan?.kcal;return `<div class="ring-wrap"><div class="cal-ring" style="--value:${progress(t.kcal,target)};--ring:${target&&t.kcal>target?'#222222':'#444444'}"><div class="inner">${icon('fire')}${big?'<div class="small">ENERGY</div>':''}</div></div><div><div class="ring-number">${nf(t.kcal,0)}<span>kcal</span></div><div class="mini-subtitle">${target>0?`目標 ${nf(target,0)} kcal`:'カロリー目標は未設定'}</div>${target>0?`<div class="pill" style="margin-top:9px">${t.kcal<=target?'あと':'目標より'} ${nf(Math.abs(target-t.kcal),0)} kcal${t.kcal>target?'多い':''}</div>`:''}</div></div>`;}
 function nutritionPanel(){const t=C.mealTotals(state.meals[day]);return `<section class="panel"><div class="panel-heading"><h2>${day===today?'今日の栄養':'この日の栄養'}</h2><span class="tag">${dateLabel(day)}</span></div>${calorieRing(t)}${macroRows(t)}${btn('nav-food','食事を記録する','plus','full')}</section>`;}
@@ -461,7 +473,7 @@ function drawShare() {
 }
 async function shareNative(){if(!shareBlob){toast('画像を準備中です。もう一度お試しください');return;}const file=new File([shareBlob],shareFilename(sharePrefs.kind,sharePrefs.date,day,today),{type:'image/png'}),text=modal.querySelector('#share-text')?.value??shareContentText();try{if(navigator.canShare?.({files:[file]})&&navigator.share){await navigator.share({files:[file],title:'REPS NOTE',text});}else{download(shareBlob,file.name);toast('画像のダウンロードを開始しました。SNSで添付してください');}}catch(err){if(err.name!=='AbortError'){download(shareBlob,file.name);toast('共有できなかったため画像のダウンロードを開始しました');}}}
 const recordActions=new Set([
-  'favorite','picker-favorite','choose-exercise','use-routine','delete-routine','add-set','copy-set','complete-set',
+  'favorite','picker-favorite','choose-exercise','use-routine','delete-routine','add-set','add-three-sets','copy-set','complete-set',
   'delete-set','delete-exercise','copy-exercise-previous','copy-previous','copy-food','copy-food-day','delete-food',
   'delete-saved-food','delete-plan','delete-body','start-timer','pause-timer','reset-timer','close-timer','confirm-import','undo',
   'unit','switch-mode','start-real'
@@ -495,6 +507,16 @@ async function handleAction(d){try{switch(d.action){
   case 'save-routine':saveRoutineForm();break;
   case 'delete-routine':undoable(()=>{state.routines=state.routines.filter(r=>r.id!==d.id);},'保存メニューを削除しました');routineDialog();break;
   case 'add-set':{const e=instance(d.id);if(!e)return;const added=e.sets.length?C.cloneSet(e.sets.at(-1)):C.newSet();e.sets.push(added);if(commit('未完了のセットを追加しました'))focusSet(added.id,'set-weight',true);break;}
+  case 'add-three-sets':{
+    const entry=instance(d.id);
+    const source=entry?.sets.at(-1);
+    if(!source)break;
+    const copies=Array.from({length:3},()=>C.cloneSet(source));
+    if(undoable(()=>entry.sets.push(...copies),'未完了のセットを3つ追加しました')){
+      focusSet(copies[0].id,'set-weight',true);
+    }
+    break;
+  }
   case 'copy-set':{const e=instance(d.instance),s=setById(d.id);if(!e||!s)return;const idx=e.sets.findIndex(x=>x.id===s.id);const copy=C.cloneSet(s);e.sets.splice(idx+1,0,copy);if(commit('同じセットをコピーしました'))focusSet(copy.id,'set-weight',true);break;}
   case 'complete-set':{const s=setById(d.id);if(!s)return;if(!s.completed&&s.kg===0&&exercise(d.exercise).load!=='body'){toast('重量を選んでから完了してください');return;}const old=C.records(state)[d.exercise];s.completed=!s.completed;if(!commit())break;if(s.completed){const ex=exercise(d.exercise),isNew=C.records(state)[ex.id]?.id===s.id&&(!old||s.kg>old.kg+C.EPS||(ex.load==='body'&&Math.abs(s.kg-old.kg)<=C.EPS&&s.reps>old.reps));if(isNew)celebrate(ex,s,!old);if(state.settings.autoTimer&&day===today)startTimer();}break;}
   case 'edit-set':setEditor(d.id);break;

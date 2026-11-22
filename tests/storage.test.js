@@ -11,7 +11,7 @@ let session=0;
 async function openApp(t, original=JSON.stringify(blankState())){
   const values=new Map([[modeKey,'real'],[dataKey,original]]);
   const events={}, windowEvents={};
-  const app={}, toast={classList:{add(){},remove(){}}};
+  const app={querySelector:()=>null}, toast={classList:{add(){},remove(){}}};
   const input={id:'import-file',dataset:{}};
   const modal={
     open:false, addEventListener(){}, close(){this.open=false;}, showModal(){this.open=true;},
@@ -26,6 +26,7 @@ async function openApp(t, original=JSON.stringify(blankState())){
     }
   };
   const globals={
+    CSS:{escape:value=>String(value)},
     localStorage:storage, document:{querySelector:key=>dom[key],addEventListener:(key,fn)=>{events[key]=fn;}},
     window:{addEventListener:(key,fn)=>{windowEvents[key]=fn;}},
     navigator:{locks:{request:async (key,fn)=>{assert.match(key,/^repnote:v1:(real|demo)$/);return fn();}}}
@@ -136,6 +137,34 @@ test('an unreadable original can only be replaced by a successful confirmed rest
   await ui.importText(JSON.stringify(blankState()));
   await ui.click('confirm-import');
   assert.deepEqual(ui.read(),blankState());
+});
+
+test('adding three sets appends independent drafts copied from the last set and undoes them together', async t=>{
+  const state=blankState();
+  state.settings.unit='lbs';
+  const day=localDate();
+  const source={...newSet(45.359237,7),completed:true,rpe:8.5};
+  const originals=[newSet(32,10),source];
+  state.workouts[day]={title:'PUSH',note:'',exercises:[
+    {id:'press',exerciseId:'dumbbell-press',sets:originals},
+    {id:'empty',exerciseId:'leg-press',sets:[]}
+  ]};
+  const ui=await openApp(t,JSON.stringify(state));
+  assert.match(ui.app.innerHTML, /data-action="add-three-sets" data-id="empty"[^>]* disabled/);
+  await ui.click('add-three-sets',{id:'empty'});
+  assert.deepEqual(ui.read(),state);
+  await ui.click('add-three-sets',{id:'press'});
+  const [press,empty]=ui.read().workouts[day].exercises;
+  assert.deepEqual(press.sets.slice(0,2),originals);
+  assert.equal(press.sets.length,5);
+  assert.equal(new Set(press.sets.map(set=>set.id)).size,5);
+  for(const copy of press.sets.slice(2)){
+    assert.deepEqual(copy,{...source,id:copy.id,completed:false});
+  }
+  assert.deepEqual(empty.sets,[]);
+  assert.match(ui.toast.innerHTML,/data-action="undo"/);
+  await ui.click('undo');
+  assert.deepEqual(ui.read(),state);
 });
 
 test('the inline trash button removes its own set on the selected day and undo restores its position', async t=>{
