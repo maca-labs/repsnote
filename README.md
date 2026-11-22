@@ -1,7 +1,8 @@
 # REPNOTE
 
-筋トレ・食事・PFC・体重・ボディメイク計画を記録し、共有画像を作るWebアプリの初版です。
-まず `CODEX_HANDOFF.md` を読むと、目的・制約・改善の優先順位が分かります。
+筋トレ・食事・PFC・体重・ボディメイク計画を記録し、共有画像を作るWebアプリです。スマートフォンのブラウザーから使えます。[REPNOTEを開く](https://maca-labs.github.io/repsnote/)
+
+`main` の更新時にGitHub Actionsが構文チェックとテストを実行し、成功すると `dist/` をGitHub Pagesへ公開します。
 
 ## 起動
 
