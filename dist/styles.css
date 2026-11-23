@@ -1029,6 +1029,14 @@ a {
   color: var(--ink);
 }
 
+.exercise-footer [data-action="copy-exercise-previous"] .icon {
+  width: 26px;
+  height: 26px;
+  stroke-width: 1.55;
+}
+
+.exercise-footer .exercise-timer-button { margin-inline-start: auto; }
+
 .set-count-badge {
   position: absolute;
   top: 3px;
