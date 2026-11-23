@@ -62,3 +62,18 @@ test('imports reject IDs that alias built-in routines or break editing and selec
   state.workouts[day].exercises[0].sets[0].id = ' ';
   assert.throws(() => validateState(state, ids), /セット/);
 });
+
+test('restoring import metadata preserves portion calculations and detects malformed receipts', () => {
+  const state = workoutWith([newSet(50, 8)]);
+  const set = state.workouts[day].exercises[0].sets[0];
+  set.memoImport = {id:set.id, receipt:'["ベンチ","[true,50,8]",1]'};
+  const meal = {id:'meal-1',name:'弁当',meal:'昼食',basis:'serving',amount:0.75,kcal:400,p:20,f:12,c:50,
+    importInfo:{source:'メーカーの表示',portion:'1個',estimated:false,baseAmount:1.5,multiplier:0.5}};
+  state.meals[day] = [meal];
+  assert.deepEqual(validateState(structuredClone(state), ids), state);
+  meal.importInfo.multiplier = 1;
+  assert.throws(() => validateState(state, ids), /分量/);
+  meal.importInfo.multiplier = 0.5;
+  set.memoImport.receipt = {};
+  assert.throws(() => validateState(state, ids), /取り込み履歴/);
+});

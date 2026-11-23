@@ -1828,6 +1828,62 @@ dialog::backdrop {
   font-size: 17px;
 }
 
+.routine-sequence {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 12px;
+}
+
+.routine-sequence li, .routine-add {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.routine-sequence li {
+  border-bottom: 1px solid var(--line);
+  justify-content: space-between;
+  padding: 5px 0;
+}
+
+.routine-sequence li span, .routine-option h3, .routine-option p {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.routine-sequence li div {
+  display: flex;
+  flex-shrink: 0;
+}
+
+.routine-add { flex-wrap: wrap; }
+.routine-add label { width: 100%; }
+.routine-add select { flex: 1; min-width: 0; }
+#routine-editor > .field, #exercise-editor > .field { margin-block: 12px; }
+.food-source { overflow-wrap: anywhere; }
+#workout-import-source, #workout-import-map, #meal-import-review {
+  overflow-wrap: anywhere;
+}
+
+#meal-import-review .checkbox-row {
+  display: block;
+  min-height: 44px;
+  margin: 0;
+  padding: 8px 0;
+}
+
+#meal-import-review .checkbox-row input { margin-right: 6px; vertical-align: middle; }
+#meal-import-review summary { min-height: 44px; padding: 8px 0; cursor: pointer; }
+.food-ratios { margin-block: 14px; }
+.food-ratios [role="group"] { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 5px; }
+.food-ratios .button { padding: 6px 12px; min-height: 38px; }
+.food-ratios .button[aria-pressed="true"] { color: var(--paper); background: var(--ink); }
+
+@media (max-width: 520px) {
+  .routine-sequence .icon-button { width: 38px; min-height: 42px; }
+  .section-heading .row:has([data-action="meal-import"]) { flex-wrap: wrap; }
+}
+
 .routine-option p {
   font-size: 13px;
   color: var(--muted);

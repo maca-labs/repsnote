@@ -184,6 +184,71 @@ test('a failed write restores both the screen and the stored state', async t=>{
   assert.equal(ui.read().favorites.includes('leg-press'),false);
 });
 
+test('mapped CSV import is atomic on quota failure and detects an intervening write before retry', async t=>{
+  const original=blankState(), day=localDate();
+  original.workouts[day]={title:'保存済み',note:'既存の記録',exercises:[]};
+  const ui=await openApp(t,JSON.stringify(original));
+  const event={preventDefault(){}};
+  const file={files:[], addEventListener(){}}, text={value:'',addEventListener(){}};
+  const error={}, preview={}, back={addEventListener(){}}, copyPrompt={addEventListener(){}};
+  let previewRows;
+  const sourceForm={
+    querySelector:key=>({'#workout-import-file':file,'#workout-import-text':text,'#form-error':error,
+      '[data-preview-workouts]':preview,'[data-copy-workout-transcription]':copyPrompt})[key],
+    addEventListener(name,fn){if(name==='submit')previewRows=fn;}
+  };
+  const previewList={replaceChildren(...items){this.items=items;}};
+  const previewControls={querySelector:()=>({addEventListener(){}})};
+  const mappingFields={
+    '[data-import-back]':back,'#form-error':error,'[data-preview-range]':{},
+    '[data-preview-list]':previewList,'[data-preview-pages]':previewControls,
+    '[data-preview-all]':{parentElement:{},addEventListener(){},setAttribute(){}}
+  };
+  document.createElement=()=>({});
+  const mappingForm={querySelector:key=>mappingFields[key]??null};
+  ui.modal.querySelector=key=>({'#workout-import-source':sourceForm,'#workout-import-map':mappingForm})[key]??null;
+  ui.modal.contains=form=>ui.modal.open&&(form===sourceForm||form===mappingForm);
+  const descriptor=Object.getOwnPropertyDescriptor(globalThis,'FormData');
+  Object.defineProperty(globalThis,'FormData',{configurable:true,value:class {
+    get(key){return key==='map-0'?'dumbbell-press':null;}
+  }});
+  t.after(()=>Object.defineProperty(globalThis,'FormData',descriptor));
+  async function stage(){
+    await ui.click('workout-import');
+    text.value='日付,種目,重量(kg),回数\n'+day+',プレス,20,8\n'+day+',プレス,21,6';
+    await previewRows(event);
+    assert.match(ui.modal.innerHTML,/workout-import-map/);
+    assert.match(previewList.items[1].textContent,/21 kg × 6回/);
+  }
+  const submit=()=>ui.modal.onsubmit({...event,target:mappingForm});
+  await stage();
+  ui.storage.failKey=dataKey;
+  await submit();
+  assert.deepEqual(ui.read(),original);
+  assert.equal(ui.modal.open,false);
+  // A subsequent successful action must not flush an in-memory partial merge.
+  ui.storage.failKey=null;
+  await ui.click('favorite',{id:'leg-press'});
+  assert.deepEqual(ui.read().workouts,original.workouts);
+
+  await stage();
+  const remote=ui.read();
+  remote.workouts[day].note='別タブの更新';
+  ui.values.set(dataKey,JSON.stringify(remote));
+  await submit();
+  assert.deepEqual(ui.read(),remote);
+  assert.match(ui.toast.innerHTML,/別のタブ/);
+  await stage();
+  await submit();
+  const merged=ui.read().workouts[day];
+  assert.equal(merged.note,remote.workouts[day].note);
+  assert.equal(merged.exercises[0].exerciseId,'dumbbell-press');
+  assert.deepEqual(merged.exercises[0].sets.map(s=>s.kg),[20,21]);
+  await stage();
+  await submit();
+  assert.deepEqual(ui.read().workouts[day],merged);
+});
+
 test('an oversized file is rejected before reading it into memory', async t=>{
   const ui=await openApp(t);
   const original=ui.values.get(dataKey);

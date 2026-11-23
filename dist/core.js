@@ -1,4 +1,5 @@
 import { EXERCISES, ROUTINES } from './catalog.js';
+import { EXERCISE_GROUPS, validateCatalogOverrides } from './catalog-settings.js';
 
 export const SCHEMA = 1;
 export const LB_KG = 0.45359237;
@@ -244,8 +245,9 @@ export function validateState(input,exerciseIds=[]) {
   const s=input;
   if(!obj(s.settings)||!validUnit(s.settings.unit)||typeof s.settings.autoTimer!=='boolean'||!num(s.settings.timerSeconds,10,3600)||!num(s.settings.weightStep,.25,20))bad('設定が正しくありません。');
   if(!array(s.customExercises)||!unique(s.customExercises.map(e=>e?.id)))bad('カスタム種目が正しくありません。');
-  for(const e of s.customExercises)if(!obj(e)||!id(e.id)||!str(e.name)||!['胸','背中','肩','腕','脚','体幹'].includes(e.group)||!['バーベル','ダンベル','マシン','ケーブル','自重'].includes(e.equipment)||!['single','total','stack','body'].includes(e.load)||!array(e.aliases,50)||!e.aliases.every(a=>str(a)))bad('種目の値が正しくありません。');
+  for(const e of s.customExercises)if(!obj(e)||!id(e.id)||!str(e.name)||!EXERCISE_GROUPS.includes(e.group)||!['バーベル','ダンベル','マシン','ケーブル','自重'].includes(e.equipment)||!['single','total','stack','body'].includes(e.load)||!array(e.aliases,50)||!e.aliases.every(a=>str(a)))bad('種目の値が正しくありません。');
   const known=new Set([...exerciseIds,...s.customExercises.map(e=>e.id)]);
+  validateCatalogOverrides(s, known);
   if (Object.hasOwn(s.settings, 'exerciseUnits')) {
     const units = s.settings.exerciseUnits;
     if (!obj(units) || !Object.entries(units).every(([id, unit]) => known.has(id) && validUnit(unit))) {
@@ -271,6 +273,12 @@ export function validateState(input,exerciseIds=[]) {
       allIds.push(e.id);
       for(const set of e.sets) {
         if (!obj(set) || !id(set.id) || typeof set.completed !== 'boolean') bad('セットの値が正しくありません。');
+        if (Object.hasOwn(set, 'memoImport')) {
+          const origin = set.memoImport;
+          if (!obj(origin) || !id(origin.id) || !str(origin.receipt,4096) || !origin.receipt.length) {
+            bad('セットの取り込み履歴が正しくありません。');
+          }
+        }
         if (cardioIds.has(e.exerciseId)) {
           const hasStrengthFields = ['kg','reps','kind','assisted','rpe'].some(key => Object.hasOwn(set, key));
           if (hasStrengthFields || !CARDIO_FIELDS.every(field => validCardioValue(field, set[field.key]))) {
@@ -290,7 +298,18 @@ export function validateState(input,exerciseIds=[]) {
   if(!unique(s.foods.map(f=>f.id)))bad('食品IDが重複しています。');
   for(const[d,ms]of Object.entries(s.meals)) {
     if(!date(d)||!array(ms))bad('食事の日付が正しくありません。');
-    for(const m of ms){if(!nutrition(m)||!id(m.id)||!num(m.amount,.01,10000)||!['朝食','昼食','夕食','間食'].includes(m.meal))bad('食事の値が正しくありません。');foodIds.push(m.id);}
+    for(const m of ms){
+      if(!nutrition(m)||!id(m.id)||!num(m.amount,.01,10000)||!['朝食','昼食','夕食','間食'].includes(m.meal))bad('食事の値が正しくありません。');
+      if (Object.hasOwn(m, 'importInfo')) {
+        const info=m.importInfo;
+        if (!obj(info) || !str(info.portion,250) || !str(info.source,2000) || typeof info.estimated!=='boolean'
+          || !Number.isFinite(info.baseAmount) || info.baseAmount<=0 || !Number.isFinite(info.multiplier) || info.multiplier<=0
+          || Math.abs(info.baseAmount*info.multiplier-m.amount)>1e-9*Math.max(1,m.amount)) {
+          bad('食事の取り込み元または分量が正しくありません。');
+        }
+      }
+      foodIds.push(m.id);
+    }
   }
   if(!unique(foodIds))bad('食事IDが重複しています。');
   if(!array(s.body,20000)||!unique(s.body.map(b=>b?.date)))bad('体重の記録が正しくありません。');

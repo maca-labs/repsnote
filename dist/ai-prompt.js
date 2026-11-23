@@ -1,4 +1,4 @@
-import { EXERCISES } from './catalog.js';
+import { getExercises } from './catalog-settings.js';
 import { cardioDetails, exerciseUnit, fmt, fromKg, mealTotals } from './core.js';
 import { planNutritionLines, setDetails } from './share.js';
 
@@ -6,7 +6,7 @@ const LOAD_LABELS = {single: '片手', total: '合計', stack: 'マシン表示'
 
 function workoutLines(state, day) {
   const workout = state.workouts[day];
-  const catalog = new Map([...EXERCISES, ...state.customExercises].map(ex => [ex.id, ex]));
+  const catalog = new Map(getExercises(state).map(ex => [ex.id, ex]));
   const lines = [];
   for (const entry of workout?.exercises ?? []) {
     const done = entry.sets.filter(set => set.completed);
