@@ -9,6 +9,7 @@ import {editedWeightKg, weightPresets} from './workout-input.js';
 import { buildAiPrompt } from './ai-prompt.js';
 import { monthlyShareReport, drawMonthlySummary } from './month-share.js';
 import { createInstallController } from './install.js';
+import { createTimerSound } from './timer-sound.js';
 import {
   cardEntryHeight, cardRowHeight, currentWeightLabel, planNutritionLines, setDetails, sharedWorkout,
   shareFilename, workoutCardLayout, workoutCsv,
@@ -24,6 +25,7 @@ const app=document.querySelector('#app');const modal=document.querySelector('#mo
 let installStorage;
 try { installStorage=window.localStorage; } catch {}
 const install=createInstallController(window, navigator, installStorage, updateInstallControls);
+const timerSound=createTimerSound(window);
 let today=C.localDate();
 let view='workout',day=today,month=day.slice(0,7),prGroup='すべて',searchText='',searchGroup='お気に入り',toastTimeout,undoState=null,undoFingerprint='',storageProblem='',loadBlocked=false;
 let mode='demo',state;
@@ -45,7 +47,8 @@ function load(){
       if(t&&(t.endAt===null||Number.isFinite(t.endAt))&&Number.isFinite(t.remaining)&&t.remaining>=0){
         // A running legacy timer kept its selected seconds in remaining until first paused.
         const duration=t.duration??(t.endAt?t.remaining:state.settings.timerSeconds);
-        state.timer={endAt:t.endAt,remaining:t.remaining,finished:t.finished===true,
+        state.timer={endAt:t.endAt,remaining:t.remaining,finished:t.finished===true||(t.endAt===null&&t.remaining===0),
+          ...(typeof t.exerciseId==='string'&&[...EXERCISES,...state.customExercises].some(ex=>ex.id===t.exerciseId)?{exerciseId:t.exerciseId}:{}),
           duration:Number.isFinite(duration)&&duration>=10&&duration<=3600?duration:state.settings.timerSeconds};
       }
     }
@@ -55,6 +58,7 @@ function load(){
     storageProblem='保存データを読み込めませんでした。元データは保持しています。「設定」で書き出し・復元ができます。';
   }
   committedState=JSON.stringify(state);
+  if(!state.settings.timerSound)void timerSound.disarm();
 }
 load();
 function invalidateHistory(){
@@ -237,7 +241,7 @@ async function copyAiPrompt(){
     field.select();
   }
 }
-function renderWorkout(){const w=getWorkout(),stats=C.workoutStats(w),prs=C.records(state);return `<div class="layout"><section class="main-col">${dateStrip()}<div class="workout-hero"><div><div class="eyebrow">${day===today?'TODAY’S WORKOUT':'WORKOUT LOG'}</div><div class="hero-title">${h(w.title)}</div>${stats.exercises?`<p>${h(catalogGroups(w))}</p>`:''}</div><div class="hero-right">${btn('routines','メニューを選ぶ','list')}</div></div><div class="metric-grid"><div class="metric"><div class="label">${icon('check')}完了セット</div><div class="value">${stats.sets}<span>/ ${stats.total}</span></div></div><div class="metric"><div class="label">${icon('weight')}ボリューム</div><div class="value">${weight(stats.volume,unit(),0)}<span>${unit()}</span></div></div><div class="metric"><div class="label">${icon('dumbbell')}種目</div><div class="value">${stats.exercises}</div></div></div><div class="workout-toolbar"><h2>セットを記録</h2><div class="row">${btn('copy-previous','前回をコピー','copy')}${btn('timer-open','休憩','clock')}</div></div>
+function renderWorkout(){const w=getWorkout(),stats=C.workoutStats(w),prs=C.records(state);return `<div class="layout"><section class="main-col">${dateStrip()}<div class="workout-hero"><div><div class="eyebrow">${day===today?'TODAY’S WORKOUT':'WORKOUT LOG'}</div><div class="hero-title">${h(w.title)}</div>${stats.exercises?`<p>${h(catalogGroups(w))}</p>`:''}</div><div class="hero-right">${btn('routines','メニューを選ぶ','list')}</div></div><div class="metric-grid"><div class="metric"><div class="label">${icon('check')}完了セット</div><div class="value">${stats.sets}<span>/ ${stats.total}</span></div></div><div class="metric"><div class="label">${icon('weight')}ボリューム</div><div class="value">${weight(stats.volume,unit(),0)}<span>${unit()}</span></div></div><div class="metric"><div class="label">${icon('dumbbell')}種目</div><div class="value">${stats.exercises}</div></div></div><div class="workout-toolbar"><h2>セットを記録</h2><div class="row">${btn('copy-previous','前回をコピー','copy')}</div></div>
   ${w.exercises.length?w.exercises.map(e=>renderExercise(e,prs)).join(''):`<div class="panel empty">${icon('dumbbell')}<h3>この日のメニューは未登録です</h3><p>前回の記録や保存したメニューから、種目と入力値を呼び出せます。</p>${btn('routines','メニューからはじめる','list','primary')}</div>`}
   <button class="add-exercise" data-action="add-exercise">${icon('plus')}種目を追加</button><div class="panel session-note" style="margin-top:20px"><div class="between"><h3>トレーニングメモ</h3>${btn('save-routine','メニューを保存','save','ghost')}</div><textarea placeholder="調子、フォーム、次回気をつけたいこと…" aria-label="トレーニングメモ" maxlength="2000" data-change="session-note">${h(w.note)}</textarea><div class="save-note">${icon('shield')}${mode==='demo'?'サンプルモードで保存':'このブラウザに自動保存'} · 完了したセットを集計</div></div><div class="small" style="margin-top:14px">ボリューム＝完了したセットの入力重量 × 回数の合計。ダンベルは片手分、自重の体重分は含みません。</div></section><aside class="side-col">${nutritionPanel()}${highlightPanel(prs)}${weightPanel()}<div class="tip-box"><strong>${icon('copy')} セットの複製</strong>行のコピーアイコンで同じ内容のセットを複製。チェックを入れたセットだけが記録に加わります。</div></aside></div>`;}
 function catalogGroups(w){return [...new Set(w.exercises.map(e=>exercise(e.exerciseId).group))].filter(Boolean).join('・');}
@@ -339,6 +343,7 @@ function renderStrengthTable(inst,ex,last,prs,u){return `<div class="set-table">
 function renderExercise(inst,prs){const ex=exercise(inst.exerciseId),last=C.lastExercise(state,ex.id,day),u=exerciseUnit(ex.id);return `<article class="exercise-card" id="exercise-${h(inst.id)}"><div class="exercise-head"><div class="row"><div class="badge-icon">${icon(ex.load==='cardio'?'heart':'dumbbell')}</div><div><div class="exercise-title">${h(ex.name)}</div><div class="exercise-sub">${h(ex.group)} · ${h(ex.equipment)} · ${h(loadLabel(ex))}</div></div></div><div class="exercise-tools">${ib('favorite',state.favorites.includes(ex.id)?'お気に入りから外す':'お気に入りに追加','star',`data-id="${h(ex.id)}"`,state.favorites.includes(ex.id)?'active':'')}${ib('exercise-menu','種目の編集・削除','more',`data-id="${h(inst.id)}"`)}</div></div>${ex.load==='cardio'?renderCardioTable(inst,ex,last):renderStrengthTable(inst,ex,last,prs,u)}<div class="exercise-footer">
   <button type="button" class="text-button" data-action="add-set" data-id="${h(inst.id)}">${icon('plus')}セットを追加</button>
   <button type="button" class="text-button" data-action="add-three-sets" data-id="${h(inst.id)}" title="この種目の最後のセットを3つ複製" ${inst.sets.length?'':'disabled'}>${icon('copy')}同じセットを3つ追加</button>
+  ${ib('timer-open',ex.name+'の休憩タイマー','clock',`data-exercise="${h(ex.id)}" aria-haspopup="dialog"`,'exercise-timer-button')}
   <button type="button" class="text-button" data-action="copy-exercise-previous" data-id="${h(inst.id)}">${icon('history')}${last?`${dateLabel(last.date)}をコピー`:'前回のセット'}</button>
 </div>${inst.note?`<div class="exercise-note">${h(inst.note)}</div>`:''}</article>`;}
 function macroRows(t,plan=state.plan){return [['p','P','たんぱく質','#202020'],['f','F','脂質','#656565'],['c','C','炭水化物','#969696']].map(([key,abbr,label,color])=>`<div class="progress-row"><div class="progress-info"><span class="progress-label"><i class="macro-dot" style="background:${color}"></i><strong>${abbr}</strong>${label}</span><span class="mono">${nf(t[key])}<span class="muted"> / ${plan?.[key]>0?nf(plan[key])+' g':'目標未設定'}</span></span></div><div class="progress-track"><div class="progress-fill" style="background:${color};width:${progress(t[key],plan?.[key])}%"></div></div></div>`).join('');}
@@ -363,6 +368,7 @@ function bindForm(fn){
   modal.onsubmit=e=>{
     e.preventDefault();
     const form=e.target, data=new FormData(form);
+    if(state.settings.timerSound && (form.id==='rest-timer-form' || e.submitter?.hasAttribute('data-rest-start')))void timerSound.arm();
     return withRecordLock(()=>{
       if(!modal.open||!modal.contains(form))return;
       try{fn(data,e.submitter);}catch(err){
@@ -535,9 +541,9 @@ function exerciseMenu(id){
     C.setExerciseRestSeconds(state,inst.exerciseId,seconds===''?null:Number(seconds));
     inst.note=fd.get('note');
     const start=submitter?.hasAttribute('data-rest-start');
-    if(start)state.timer=runningTimer(C.exerciseRestSeconds(state,inst.exerciseId));
+    if(start)state.timer=runningTimer(C.exerciseRestSeconds(state,inst.exerciseId),inst.exerciseId);
     modal.close();
-    commit(start?'休憩を開始しました':'メモと休憩時間を保存しました');
+    if(commit(start?'休憩を開始しました':'メモと休憩時間を保存しました')&&start)timerDialog(inst.exerciseId);
   });
 }
 function foodForm({entry=null,preset=null,meal='朝食',saveOnly=false}={}){const f=entry??preset??{name:'',basis:'serving',amount:1,meal,kcal:'',p:0,f:0,c:0};openDialog(saveOnly?'登録した食品を編集':entry?'食事を訂正する':'食事を記録',`<p>${saveOnly?'登録済みの食品だけを更新します。過去の食事記録は当時の数値を保持します。':`${dateLabel(day,true)}の食事。パッケージの栄養表示などを入力してください。`}</p><form id="food-entry" data-base-amount="${h(entry?.importInfo?.baseAmount??'')}" data-base-basis="${h(f.basis)}">${foodImportSource(entry)}${!saveOnly&&state.foods.length?`<div class="field" style="margin-bottom:18px"><label for="saved-food-select">いつもの食事から選ぶ</label><select id="saved-food-select"><option value="">新しく入力する</option>${state.foods.map(x=>`<option value="${h(x.id)}" ${preset?.id===x.id?'selected':''}>${h(x.name)}</option>`).join('')}</select></div>`:''}<div class="form-grid">${inputField('name','食品・メニュー名',f.name,'required maxlength="200"','full')}${!saveOnly?selectField('meal','食事',['朝食','昼食','夕食','間食'],f.meal??meal):''}${selectField('basis','栄養表示の基準',[['serving','1食分あたり'],['100g','100gあたり']],f.basis)}${!saveOnly?inputField('amount',f.basis==='100g'?'食べた量（g）':'食べた量（食分）',f.amount??(f.basis==='100g'?100:1),'type="number" min="0.01" max="10000" step="any" required inputmode="decimal"'):''}${inputField('kcal','基準あたりのカロリー（kcal）',f.kcal,'type="number" min="0" max="100000" step="any" required inputmode="decimal"')}</div><div class="form-grid three" style="margin-top:17px">${['p','f','c'].map((k,i)=>inputField(k,['P たんぱく質（g）','F 脂質（g）','C 炭水化物（g）'][i],f[k],'type="number" min="0" max="100000" step="any" required inputmode="decimal"')).join('')}</div>${saveOnly?'':`<div class="food-ratios"><span class="small" data-portion-label></span><div role="group" aria-label="食べた量の倍率">${[.5,1,1.5,2].map(r=>btn('food-ratio',r+'倍','','',`data-food-ratio="${r}"`)).join('')}</div></div>`}<div class="info-box" id="food-calculation"></div>${!entry&&!saveOnly?'<label class="checkbox-row"><input type="checkbox" name="saveFood" '+(!preset?'checked':'')+'>いつもの食事に登録する</label>':''}${formEnd(saveOnly?'食品を更新':'食事を保存',entry?btn('delete-food','削除','trash','danger',`data-id="${h(entry.id)}"`):'')}</form>`);updateFoodCalculation();bindForm(fd=>{const data={name:String(fd.get('name')).trim(),basis:fd.get('basis'),kcal:number(fd,'kcal'),p:number(fd,'p'),f:number(fd,'f'),c:number(fd,'c')};need(data.name,'食品名を入力してください。');if(saveOnly){const item=state.foods.find(x=>x.id===preset.id);Object.assign(item,data);}else{const record={...data,id:entry?.id??C.uid(),amount:number(fd,'amount',.01,10000),meal:fd.get('meal')};if(entry?.importInfo&&['name','basis','kcal','p','f','c'].every(k=>entry[k]===data[k])&&Number.isFinite(entry.importInfo.baseAmount)&&entry.importInfo.baseAmount>0){record.importInfo={...entry.importInfo,multiplier:record.amount/entry.importInfo.baseAmount};}state.meals[day]??=[];if(entry)state.meals[day]=state.meals[day].map(m=>m.id===entry.id?record:m);else state.meals[day].push(record);if(fd.has('saveFood'))state.foods.push({...data,id:C.uid()});}modal.close();commit(saveOnly?'食品を更新しました':'食事を保存しました');});}
@@ -557,7 +563,12 @@ function updateFoodCalculation(){const form=modal.querySelector('form'),out=moda
 function manageFoods(){openDialog('いつもの食事を管理',state.foods.length?state.foods.map(f=>`<div class="routine-option"><div><h3>${h(f.name)}</h3><p>${nf(f.kcal)} kcal / ${f.basis==='100g'?'100g':'1食分'}</p></div><div class="row">${ib('edit-saved-food','食品を編集','edit',`data-id="${h(f.id)}"`)}${ib('delete-saved-food','登録から削除','trash',`data-id="${h(f.id)}"`)}</div></div>`).join(''):'<p>食事を記録するときに登録できます。</p>');}
 function planForm(){const p=state.plan??{startDate:today,targetDate:C.shiftDay(today,84),startWeight:state.body.filter(b=>b.date<=today).sort((a,b)=>b.date.localeCompare(a.date))[0]?.kg??'',targetWeight:'',kcal:0,p:0,f:0,c:0};openDialog('計画と栄養目標',`<p>自分で決めた目標を記録します。開始と目標を結ぶラインで進み具合を確認できます。</p><form><div class="form-grid">${inputField('startWeight','開始体重（kg）',p.startWeight,'type="number" min="10" max="500" step="0.1" required inputmode="decimal"')}${inputField('targetWeight','目標体重（kg）',p.targetWeight,'type="number" min="10" max="500" step="0.1" required inputmode="decimal"')}${inputField('startDate','開始日',p.startDate,'type="date" required')}${inputField('targetDate','目標日',p.targetDate,'type="date" required')}${inputField('kcal','1日のカロリー目標（kcal）',p.kcal||'','type="number" min="0" max="100000" step="1" inputmode="numeric" placeholder="未設定"','full')}</div><div class="form-grid three" style="margin-top:17px">${['p','f','c'].map((k,i)=>inputField(k,['P たんぱく質（g）','F 脂質（g）','C 炭水化物（g）'][i],p[k]||'','type="number" min="0" max="100000" step="any" inputmode="decimal" placeholder="未設定"')).join('')}</div><div class="info-box">カロリー・PFCは空欄または0で未設定。体重は減量・維持・増量のいずれにも使えます。</div>${formEnd('計画を保存',state.plan?btn('delete-plan','計画を削除','trash','danger'):'')}</form>`);bindForm(fd=>{const startDate=fd.get('startDate'),targetDate=fd.get('targetDate');need(C.daysBetween(startDate,targetDate)>0,'目標日は開始日より後にしてください。');const plan={startDate,targetDate,startWeight:number(fd,'startWeight',10,500),targetWeight:number(fd,'targetWeight',10,500)};for(const k of ['kcal','p','f','c'])plan[k]=fd.get(k)===''?0:number(fd,k);state.plan=plan;modal.close();commit('計画と栄養目標を保存しました');});}
 function bodyForm(date=null){const entry=state.body.find(b=>b.date===date);openDialog(entry?'からだの記録を訂正':'からだを記録',`<form><div class="form-grid">${inputField('date','日付',entry?.date??today,'type="date" required','full')}${inputField('kg','体重（kg）',entry?.kg??'','type="number" min="10" max="500" step="0.1" required inputmode="decimal"')}${inputField('bodyFat','体脂肪率（%・任意）',entry?.bodyFat??'','type="number" min="1" max="80" step="0.1" inputmode="decimal"')}</div>${formEnd('記録を保存',entry?btn('delete-body','削除','trash','danger',`data-date="${date}"`):'')}</form>`);bindForm(fd=>{const newDate=fd.get('date');need(!state.body.some(b=>b.date===newDate&&b.date!==date),'その日付には記録があります。該当日の記録から訂正してください。');const record={date:newDate,kg:number(fd,'kg',10,500),bodyFat:fd.get('bodyFat')===''?null:number(fd,'bodyFat',1,80)};state.body=state.body.filter(b=>b.date!==date);state.body.push(record);modal.close();commit('からだの記録を保存しました');});}
-function settingsDialog(){openDialog('設定・バックアップ',`${installSettings()}<div class="settings-row"><div><h3>標準の重量単位</h3><p>単位が未設定の種目と合計ボリュームに使います。</p></div><select aria-label="重量の単位" data-change="setting-unit">${options(['kg','lbs'],unit())}</select></div><div class="settings-row"><div><h3>重量リストの刻み</h3><p>ダンベルは2kg刻み。その他は種目の表示単位で設定した刻みを使います。</p></div><select aria-label="重量の刻み" data-change="setting-step">${options([.5,1,1.25,2,2.5,5,10],state.settings.weightStep,n=>nf(n,2))}</select></div><div class="settings-row"><div><h3>完了したら休憩タイマー</h3><p>画面へ戻ったときも残り時間を再計算。</p></div><input type="checkbox" aria-label="自動休憩タイマー" data-change="setting-auto" ${state.settings.autoTimer?'checked':''}></div><div class="settings-row"><div><h3>休憩時間</h3><p>通知はこの画面を開いている間に表示。</p></div><select aria-label="休憩時間" data-change="setting-timer">${options([30,60,90,120,180,240,300],state.settings.timerSeconds,n=>n+'秒')}</select></div><div class="divider"></div><h3>記録のバックアップ</h3><p class="mini-subtitle" style="margin-top:9px">記録はこのブラウザに保存されます。別の端末へ移すときや、ブラウザのデータを消す前にバックアップしてください。</p><div class="menu-grid" style="margin-top:17px">${btn('export','バックアップを書き出す','download')}${btn('import','バックアップを読み込む','upload')}${btn('export-csv','セット履歴をCSV保存','list')}${btn('workout-import','筋トレ記録を取り込む','upload')}${btn('switch-mode',mode==='demo'?'自分の記録に切り替える':'サンプルを別モードで見る','spark')}</div><input type="file" id="import-file" accept="application/json,.json" hidden><div class="info-box">${mode==='demo'?'現在はサンプルモードです。自分の記録とは別に保存されます。':'現在は自分の記録モードです。'}<br>自動同期には対応していません。バックアップは食事・体重・目標を含むJSON形式です。</div>${loadBlocked?btn('export-raw','読み込めなかった元データを保存','download','full'):''}<div class="small">REPS NOTE v1.0 · 体重はkg表示。ボリュームは入力重量×回数。自己ベストは推定1RMではなく実際に記録した最高重量。</div>`);const sel=modal.querySelector('[data-change="setting-unit"]');if(sel)sel.value=unit();}
+function timerSoundRow(){
+  return `<label class="settings-row timer-sound-row"><span><strong id="timer-sound-label">タイマーの終了音</strong>
+    <small id="timer-sound-help">画面を開いているときに短い音で知らせます。全種目共通です。</small></span>
+    <input id="timer-sound-toggle" type="checkbox" data-change="setting-timer-sound" aria-labelledby="timer-sound-label" aria-describedby="timer-sound-help" ${state.settings.timerSound?'checked':''}></label>`;
+}
+function settingsDialog(){openDialog('設定・バックアップ',`${installSettings()}<div class="settings-row"><div><h3>標準の重量単位</h3><p>単位が未設定の種目と合計ボリュームに使います。</p></div><select aria-label="重量の単位" data-change="setting-unit">${options(['kg','lbs'],unit())}</select></div><div class="settings-row"><div><h3>重量リストの刻み</h3><p>ダンベルは2kg刻み。その他は種目の表示単位で設定した刻みを使います。</p></div><select aria-label="重量の刻み" data-change="setting-step">${options([.5,1,1.25,2,2.5,5,10],state.settings.weightStep,n=>nf(n,2))}</select></div><div class="settings-row"><div><h3>完了したら休憩タイマー</h3><p>画面へ戻ったときも残り時間を再計算。</p></div><input type="checkbox" aria-label="自動休憩タイマー" data-change="setting-auto" ${state.settings.autoTimer?'checked':''}></div>${timerSoundRow()}<div class="settings-row"><div><h3>休憩時間</h3><p>通知はこの画面を開いている間に表示。</p></div><select aria-label="休憩時間" data-change="setting-timer">${options([30,60,90,120,180,240,300],state.settings.timerSeconds,n=>n+'秒')}</select></div><div class="divider"></div><h3>記録のバックアップ</h3><p class="mini-subtitle" style="margin-top:9px">記録はこのブラウザに保存されます。別の端末へ移すときや、ブラウザのデータを消す前にバックアップしてください。</p><div class="menu-grid" style="margin-top:17px">${btn('export','バックアップを書き出す','download')}${btn('import','バックアップを読み込む','upload')}${btn('export-csv','セット履歴をCSV保存','list')}${btn('workout-import','筋トレ記録を取り込む','upload')}${btn('switch-mode',mode==='demo'?'自分の記録に切り替える':'サンプルを別モードで見る','spark')}</div><input type="file" id="import-file" accept="application/json,.json" hidden><div class="info-box">${mode==='demo'?'現在はサンプルモードです。自分の記録とは別に保存されます。':'現在は自分の記録モードです。'}<br>自動同期には対応していません。バックアップは食事・体重・目標を含むJSON形式です。</div>${loadBlocked?btn('export-raw','読み込めなかった元データを保存','download','full'):''}<div class="small">REPS NOTE v1.0 · 体重はkg表示。ボリュームは入力重量×回数。自己ベストは推定1RMではなく実際に記録した最高重量。</div>`);const sel=modal.querySelector('[data-change="setting-unit"]');if(sel)sel.value=unit();}
 function download(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);}
 function exportBackup(){download(new Blob([JSON.stringify({...state,exportedAt:new Date().toISOString(),app:'REPNOTE',sample:mode==='demo'})],{type:'application/json'}),`REPS NOTE-${mode}-${today}.json`);toast('バックアップを書き出しました');}
 function exportCsv() {
@@ -593,11 +604,85 @@ function switchMode(){
   render();
   toast(storageProblem||(mode==='real'?'自分の記録に切り替えました':'サンプルモードに切り替えました'));
 }
-function timerDialog(){openDialog('休憩タイマー',`<p>次のセットまで、少しひと息。休憩時間を選んでスタートできます。</p><div class="menu-grid">${[60,90,120,180].map(n=>btn('start-timer',n+'秒','clock',n===state.settings.timerSeconds?'lime':'',`data-seconds="${n}"`)).join('')}</div><div class="info-box">完了ボタンからの自動スタートは設定で切り替えられます。音・バックグラウンド通知はありません。</div>`);}
-function runningTimer(seconds){return {duration:seconds,endAt:Date.now()+seconds*1000,remaining:seconds,finished:false};}
-function startTimer(seconds){state.timer=runningTimer(seconds);save();renderTimer();}
+function timerDialog(exerciseId){
+  const ex=exercise(exerciseId), seconds=C.exerciseRestSeconds(state,exerciseId);
+  openDialog('休憩タイマー',`<section id="exercise-timer" data-exercise="${h(exerciseId)}">
+    <h3 class="timer-exercise">${h(ex.name)}</h3>
+    <div data-timer-current></div>
+    <form id="rest-timer-form">
+      ${inputField('restSeconds','この種目の休憩時間（秒）',seconds,`type="number" min="10" max="3600" step="1" inputmode="numeric" placeholder="共通設定：${state.settings.timerSeconds}秒"`)}
+      <div class="form-error" id="form-error" role="alert"></div>
+      <div class="rest-actions">
+        <button type="submit" class="button" data-timer-save>時間を保存</button>
+        <button type="submit" class="button primary" data-timer-start>${icon('play')}開始</button>
+      </div>
+    </form>
+    ${timerSoundRow()}
+  </section>`);
+  renderTimer();
+  bindForm((fd,submitter)=>{
+    const raw=fd.get('restSeconds');
+    // Starting at the shared default must keep following future changes to that default.
+    if(raw==='' || Number(raw)!==C.exerciseRestSeconds(state,exerciseId)){
+      C.setExerciseRestSeconds(state,exerciseId,raw===''?null:Number(raw));
+    }
+    const duration=C.exerciseRestSeconds(state,exerciseId);
+    const start=submitter?.hasAttribute('data-timer-start');
+    if(start)state.timer=runningTimer(duration,exerciseId);
+    if(!save())return;
+    modal.querySelector('[name="restSeconds"]').value=duration;
+    renderTimer();
+    if(!start)toast('この種目の休憩時間を保存しました');
+  });
+}
+function runningTimer(seconds,exerciseId){
+  return {duration:seconds,endAt:Date.now()+seconds*1000,remaining:seconds,finished:false,...(exerciseId?{exerciseId}:{})};
+}
+function startTimer(seconds,exerciseId){
+  state.timer=runningTimer(seconds,exerciseId);
+  if(save())renderTimer();
+}
 function timerSeconds(){return state.timer?.endAt?Math.max(0,Math.ceil((state.timer.endAt-Date.now())/1000)):state.timer?.remaining??0;}
-function renderTimer(){const root=document.querySelector('#timer-root'),t=state.timer;if(!t){root.innerHTML='';return;}const n=timerSeconds();root.innerHTML=`<div class="timer ${n===0?'finished':''}">${icon('clock')}<div><label>${n===0?'休憩終了':'REST TIMER'}</label><div class="timer-time" id="timer-display">${Math.floor(n/60)}:${String(n%60).padStart(2,'0')}</div></div><div class="timer-controls">${ib('pause-timer',t.endAt?'一時停止':'再開',t.endAt?'pause':'play')}${ib('reset-timer','タイマーをやり直す','reset')}${ib('close-timer','タイマーを閉じる','close')}</div></div>`;}
+const timerTime=n=>`${Math.floor(n/60)}:${String(n%60).padStart(2,'0')}`;
+function renderTimer(){
+  const active=state.timer;
+  for(const button of app.querySelectorAll?.('.exercise-timer-button')??[]){
+    const current=active?.exerciseId===button.dataset.exercise && !active.finished;
+    button.classList.toggle('has-timer',current);
+    const label=exercise(button.dataset.exercise).name+'の休憩タイマー'+(current?(active.endAt?'（計測中）':'（一時停止中）'):'');
+    button.setAttribute('aria-label',label);
+    button.title=label;
+  }
+  const popup=modal.open&&modal.querySelector('#exercise-timer');
+  if(!popup)return;
+  const id=popup.dataset.exercise;
+  const timer=active?.finished && active.exerciseId!==id ? null : active;
+  const own=timer?.exerciseId===id;
+  const different=timer&&!own&&!timer.finished;
+  const status=!timer?'設定時間':timer.finished?'休憩終了':timer.endAt?'休憩中':'一時停止中';
+  const timerName=timer&&!own?(timer.exerciseId?exercise(timer.exerciseId).name:'共通タイマー'):'';
+  const current=popup.querySelector('[data-timer-current]');
+  const focusedAction=current.contains(document.activeElement)?document.activeElement.dataset.action:null;
+  const start=popup.querySelector('[data-timer-start]');
+  const startFocused=document.activeElement===start;
+  const n=timer?timerSeconds():C.exerciseRestSeconds(state,id);
+  current.innerHTML=`<div class="rest-readout">
+    <div id="timer-status" role="status">${h(timerName?timerName+' · '+status:status)}</div>
+    <div class="timer-time" id="timer-display" role="timer" aria-label="休憩時間">${timerTime(n)}</div>
+    </div>${timer?`<div class="rest-actions">
+      ${timer.finished?'':btn('pause-timer',timer.endAt?'一時停止':'再開',timer.endAt?'pause':'play','primary')}
+      ${timer.finished?'':btn('reset-timer','最初から','reset')}
+      ${btn('close-timer',timer.finished?'終了を確認':'停止', 'close')}
+    </div>`:''}`;
+  start.hidden=Boolean(own&&!timer.finished);
+  start.disabled=start.hidden;
+  start.innerHTML=icon('play')+(different?'この種目に切り替えて開始':'開始');
+  const nextFocus=focusedAction&&current.querySelector(`[data-action="${focusedAction}"]`);
+  if(nextFocus)nextFocus.focus({preventScroll:true});
+  else if(focusedAction||startFocused&&start.hidden){
+    (current.querySelector('button')??start).focus({preventScroll:true});
+  }
+}
 function refreshToday(){
   const next=C.localDate();
   if(next===today)return;
@@ -613,14 +698,20 @@ setInterval(async ()=>{
   refreshToday();
   if(!state.timer?.endAt)return;
   const n=timerSeconds(),display=document.querySelector('#timer-display');
-  if(display)display.textContent=`${Math.floor(n/60)}:${String(n%60).padStart(2,'0')}`;
-  if(n!==0||finishingTimer)return;
+  if(display)display.textContent=timerTime(n);
+  if(n!==0||finishingTimer||document.hidden)return;
   finishingTimer=true;
   try{
     await withRecordLock(()=>{
       if(!state.timer?.endAt||timerSeconds()!==0)return;
+      // Returning to an old workout should show the result without sounding a stale alarm.
+      const chimeDue=state.settings.timerSound && !document.hidden && Date.now()-state.timer.endAt<=5000;
       state.timer={...state.timer,endAt:null,remaining:0,finished:true};
-      if(save()){renderTimer();toast('休憩が終わりました。次のセットへ。');}
+      if(save()){
+        if(chimeDue)timerSound.play();
+        renderTimer();
+        toast('休憩が終わりました。次のセットへ。');
+      }
     });
   }finally{finishingTimer=false;}
 },500);
@@ -839,6 +930,10 @@ const recordActions=new Set([
 ]);
 document.addEventListener('click',event=>{
   const target=event.target.closest('[data-action]');
+  if (state.settings.timerSound && (state.timer?.endAt || ['timer-open','start-timer','pause-timer','reset-timer'].includes(target?.dataset.action)
+    || (state.settings.autoTimer && target?.dataset.action==='complete-set'))) {
+    void timerSound.arm();
+  }
   if(!target)return;
   const d=target.dataset;
   if(recordActions.has(d.action))return withRecordLock(()=>handleAction(d),{allowRecovery:['confirm-import','switch-mode','start-real'].includes(d.action)});
@@ -913,7 +1008,7 @@ async function handleAction(d){try{switch(d.action){
     const isNew=ex.load!=='cardio'&&C.records(state)[ex.id]?.id===set.id&&(!old||set.kg>old.kg+C.EPS||
       (ex.load==='body'&&Math.abs(set.kg-old.kg)<=C.EPS&&set.reps>old.reps));
     if(isNew)celebrate(ex,set,!old);
-    if(state.settings.autoTimer&&day===today)startTimer(C.exerciseRestSeconds(state,ex.id));
+    if(state.settings.autoTimer&&day===today)startTimer(C.exerciseRestSeconds(state,ex.id),ex.id);
     break;
   }
   case 'edit-set':setEditor(d.id);break;
@@ -959,10 +1054,18 @@ async function handleAction(d){try{switch(d.action){
   case 'share-download':if(shareBlob){download(shareBlob,shareFilename(sharePrefs.kind,sharePrefs.date,day,today,shareMonth));toast('共有画像のダウンロードを開始しました');}else toast('画像を準備中です');break;
   case 'share-native':await shareNative();break;
   case 'share-copy':{const text=modal.querySelector('#share-text');try{await navigator.clipboard.writeText(text.value);toast('投稿文をコピーしました');}catch{text.focus();text.select();toast('投稿文を選択しました。端末のコピー操作でコピーできます');}break;}
-  case 'timer-open':timerDialog();break;
-  case 'start-timer':startTimer(Number(d.seconds));modal.close();break;
-  case 'pause-timer':if(state.timer){if(state.timer.endAt){state.timer.remaining=timerSeconds();state.timer.endAt=null;}else{state.timer.endAt=Date.now()+(state.timer.remaining||state.timer.duration)*1000;state.timer.finished=false;}save();renderTimer();}break;
-  case 'reset-timer':if(state.timer)startTimer(state.timer.duration);break;
+  case 'timer-open':if(d.exercise)timerDialog(d.exercise);break;
+  case 'start-timer':startTimer(Number(d.seconds),d.exercise);break;
+  case 'pause-timer':{
+    const timer=state.timer, remaining=timerSeconds();
+    // A click between the deadline and the completion tick must not cancel the alarm.
+    if(!timer||timer.finished||remaining===0)break;
+    if(timer.endAt){timer.remaining=remaining;timer.endAt=null;}
+    else timer.endAt=Date.now()+remaining*1000;
+    if(save())renderTimer();
+    break;
+  }
+  case 'reset-timer':if(state.timer)startTimer(state.timer.duration,state.timer.exerciseId);break;
   case 'close-timer':state.timer=null;save();renderTimer();break;
   case 'export':exportBackup();break;
   case 'export-csv':exportCsv();break;
@@ -978,9 +1081,16 @@ async function handleAction(d){try{switch(d.action){
   case 'switch-mode':switchMode();break;
   case 'undo':if(undoState){if(JSON.stringify({...state,timer:null})!==undoFingerprint){undoState=null;toast('その後の変更があるため、履歴から訂正してください');break;}const timer=state.timer;state=undoState;state.timer=timer;undoState=null;commit('元に戻しました');if(modal.open)modal.close();}break;
 }}catch(err){console.error('REPS NOTE action error',err);toast('操作を完了できませんでした：'+err.message);}}
-const recordChanges=new Set(['set-weight','set-reps','cardio-minutes','setting-unit','setting-step','setting-auto','setting-timer']);
+const recordChanges=new Set(['set-weight','set-reps','cardio-minutes','setting-unit','setting-step','setting-auto','setting-timer','setting-timer-sound']);
 document.addEventListener('change',event=>{
   const el=event.target;
+  if(el.dataset.change==='setting-timer-sound'){
+    if(el.checked){
+      void timerSound.arm().then(ready=>{
+        if(!ready && el.isConnected && el.checked)toast('このブラウザでは音声を開始できませんでした。休憩終了は画面でお知らせします。');
+      });
+    }else void timerSound.disarm();
+  }
   if(el.dataset.change==='session-note'){
     const date=day, note=el.value;
     return withRecordLock(()=>{ensureWorkout(date).note=note;save();},{allowDayChange:true});
@@ -1018,6 +1128,10 @@ function handleChange(el){const d=el.dataset;try{
   if(d.change==='setting-unit'){state.settings.unit=el.value;save();render();settingsDialog();}
   if(d.change==='setting-step'){state.settings.weightStep=Number(el.value);save();render();}
   if(d.change==='setting-auto'){state.settings.autoTimer=el.checked;save();}
+  if(d.change==='setting-timer-sound'){
+    state.settings.timerSound=el.checked;
+    if(!save()&&!state.settings.timerSound)timerSound.disarm();
+  }
   if(d.change==='setting-timer'){state.settings.timerSeconds=Number(el.value);save();}
   if(el.id==='import-file'&&el.files?.[0])return importFile(el.files[0]);
   if(el.id==='saved-food-select'&&el.value){const f=state.foods.find(f=>f.id===el.value);if(f){const form=modal.querySelector('form');for(const k of ['name','kcal','p','f','c','basis'])form.elements[k].value=f[k];form.dataset.baseAmount='';form.elements.amount.value=f.basis==='100g'?100:1;form.querySelector('label[for="field-amount"]').textContent=f.basis==='100g'?'食べた量（g）':'食べた量（食分）';if(form.elements.saveFood)form.elements.saveFood.checked=false;updateFoodCalculation();}}

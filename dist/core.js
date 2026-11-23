@@ -64,7 +64,7 @@ export function cardioDetails(set) {
 }
 export const eligible = s => !Object.hasOwn(s, 'minutes') && s.completed && s.kind==='work' && !s.assisted && Number.isFinite(s.kg) && s.kg>=0 && Number.isInteger(s.reps) && s.reps>0;
 export function blankState() {
-  return {schemaVersion:SCHEMA,settings:{unit:'kg',autoTimer:false,timerSeconds:90,weightStep:2.5},favorites:['dumbbell-press','leg-press','lat-pulldown','seated-cable-row','lateral-raise'],customExercises:[],routines:[],workouts:{},meals:{},foods:[],body:[],plan:null,timer:null};
+  return {schemaVersion:SCHEMA,settings:{unit:'kg',autoTimer:false,timerSound:false,timerSeconds:90,weightStep:2.5},favorites:['dumbbell-press','leg-press','lat-pulldown','seated-cable-row','lateral-raise'],customExercises:[],routines:[],workouts:{},meals:{},foods:[],body:[],plan:null,timer:null};
 }
 export const newSet = (kg=0,reps=10) => ({id:uid(),kg,reps,completed:false,kind:'work',assisted:false,rpe:null});
 export const newCardioSet = () => ({id:uid(), minutes:10, distanceKm:null, completed:false});
@@ -244,6 +244,7 @@ export function validateState(input,exerciseIds=[]) {
   if(!obj(input)||input.schemaVersion!==SCHEMA)bad('この形式・バージョンのバックアップには対応していません。');
   const s=input;
   if(!obj(s.settings)||!validUnit(s.settings.unit)||typeof s.settings.autoTimer!=='boolean'||!num(s.settings.timerSeconds,10,3600)||!num(s.settings.weightStep,.25,20))bad('設定が正しくありません。');
+  if(Object.hasOwn(s.settings,'timerSound') && typeof s.settings.timerSound!=='boolean')bad('タイマーの終了音の設定が正しくありません。');
   if(!array(s.customExercises)||!unique(s.customExercises.map(e=>e?.id)))bad('カスタム種目が正しくありません。');
   for(const e of s.customExercises)if(!obj(e)||!id(e.id)||!str(e.name)||!EXERCISE_GROUPS.includes(e.group)||!['バーベル','ダンベル','マシン','ケーブル','自重'].includes(e.equipment)||!['single','total','stack','body'].includes(e.load)||!array(e.aliases,50)||!e.aliases.every(a=>str(a)))bad('種目の値が正しくありません。');
   const known=new Set([...exerciseIds,...s.customExercises.map(e=>e.id)]);

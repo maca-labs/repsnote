@@ -36,7 +36,8 @@ async function openApp(t, original=JSON.stringify(blankState())){
     Object.defineProperty(globalThis,key,{configurable:true,writable:true,value});
     t.after(()=>{if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key];});
   }
-  t.mock.method(globalThis,'setInterval',()=>0);
+  let tick;
+  t.mock.method(globalThis,'setInterval',callback=>{tick=callback;return 0;});
   t.mock.method(globalThis,'setTimeout',()=>0);
   await import('../dist/app.js?storage-test='+ ++session);
   const click=(action,details={})=>events.click({target:{closest:()=>({dataset:{action,...details}})}});
@@ -45,7 +46,7 @@ async function openApp(t, original=JSON.stringify(blankState())){
     input.files=[{size:Buffer.byteLength(text),text:async ()=>text}];
     await events.change({target:input});
   }
-  return {app,modal,toast,click,storage,values,events,windowEvents,importText,read:()=>JSON.parse(values.get(dataKey))};
+  return {app,modal,toast,click,storage,values,events,windowEvents,importText,tick,read:()=>JSON.parse(values.get(dataKey))};
 }
 
 test('cardio records use time and optional metrics throughout editing, completion and draft copies',async t=>{
@@ -169,6 +170,50 @@ test('the saved duration of a paused timer survives reload, while old timers rem
   await ui.click('reset-timer');
   assert.equal(ui.read().timer.duration,60);
   assert.equal(ui.read().timer.remaining,60);
+});
+
+test('a rest timer chimes once on visible completion, and stays silent when muted or long overdue',async t=>{
+  let now=Date.now(), chimes=0;
+  t.mock.method(Date,'now',()=>now);
+  const ui=await openApp(t);
+  window.AudioContext=class {
+    state='running';
+    currentTime=0;
+    createOscillator(){return {frequency:{setValueAtTime(){}},connect(){},start(){chimes++;},stop(){}};}
+    createGain(){return {gain:{setValueAtTime(){},linearRampToValueAtTime(){}},connect(){}};}
+    close(){this.state='closed';}
+  };
+  const sound=checked=>ui.events.change({target:{dataset:{change:'setting-timer-sound'},checked}});
+  const start=()=>ui.click('start-timer',{seconds:10,exercise:'leg-press'});
+  await sound(true);
+  assert.equal(ui.read().settings.timerSound,true);
+  await start();
+  await ui.tick();
+  assert.equal(chimes,0);
+  now+=10000;
+  await Promise.all([ui.tick(),ui.tick()]);
+  await ui.tick();
+  assert.equal(ui.read().timer.finished,true);
+  assert.equal(chimes,1);
+
+  await start();
+  await sound(false);
+  now+=10000;
+  await ui.tick();
+  assert.equal(ui.read().timer.finished,true);
+  assert.equal(chimes,1);
+
+  await sound(true);
+  await start();
+  document.hidden=true;
+  now+=10000;
+  await ui.tick();
+  assert.equal(chimes,1);
+  now+=60000;
+  document.hidden=false;
+  await ui.tick();
+  assert.equal(ui.read().timer.finished,true);
+  assert.equal(chimes,1);
 });
 
 test('a failed write restores both the screen and the stored state', async t=>{

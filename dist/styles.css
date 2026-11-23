@@ -2080,50 +2080,61 @@ dialog::backdrop {
   transform: rotate(var(--r));
 }
 
-.timer {
-  position: fixed;
-  right: 27px;
-  bottom: 23px;
-  background: #202020;
-  color: white;
-  border: 1px solid #545454;
-  border-radius: 8px;
-  box-shadow: 0 6px 35px #29292933;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 13px 17px;
-  z-index: 40;
+.exercise-footer .exercise-timer-button {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  border: 1px solid var(--line);
 }
 
-.timer label {
-  font-size: 11px;
-  letter-spacing: .08em;
-  color: #cacaca;
+.exercise-footer .exercise-timer-button.has-timer {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: white;
+}
+
+dialog:has(#exercise-timer) { width: 420px; }
+
+.timer-exercise {
+  margin: 0 0 12px;
+  overflow-wrap: anywhere;
+}
+
+.rest-readout {
+  padding: 16px 12px;
+  text-align: center;
+  color: white;
+  background: #242424;
+  border-radius: 8px;
+}
+
+#timer-status {
+  font-size: 13px;
+  color: #ddd;
+  overflow-wrap: anywhere;
 }
 
 .timer-time {
-  font-size: 25px;
+  font-size: clamp(40px, 10vw, 58px);
   font-weight: 750;
   font-variant-numeric: tabular-nums;
-  line-height: 1.25;
-  min-width: 70px;
+  line-height: 1.16;
 }
 
-.timer .icon-button {
-  color: #d9d9d9;
-  width: 33px;
-  height: 35px;
-}
-
-.timer .timer-controls {
+.rest-actions {
   display: flex;
-  gap: 4px;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
 }
 
-.timer.finished {
-  border-color: var(--lime);
-}
+.rest-actions .button { flex: 1 1 auto; min-height: 44px; }
+.rest-actions .button[hidden] { display: none; }
+#rest-timer-form { margin: 20px 0 12px; }
+
+.timer-sound-row { cursor: pointer; }
+.timer-sound-row small { display: block; color: var(--muted); margin-top: 4px; }
+.timer-sound-row input { flex: 0 0 20px; width: 20px; height: 20px; accent-color: var(--ink); }
 
 .error-banner {
   background: #f5f5f5;
@@ -2261,10 +2272,6 @@ dialog::backdrop {
 
 .form-error:not(:empty) {
   padding: 8px 12px;
-}
-
-.timer .icon-button:hover {
-  color: #111;
 }
 
 @keyframes crownIn {
@@ -2752,19 +2759,6 @@ dialog::backdrop {
   .chart-legend {
     font-size: 11px;
     gap: 13px;
-  }
-  .timer {
-    right: 12px;
-    bottom: calc(68px + env(safe-area-inset-bottom));
-    padding: 10px 14px;
-    gap: 13px;
-    border-radius: 7px;
-  }
-  .timer-time {
-    font-size: 23px;
-  }
-  .timer label {
-    font-size: 10px;
   }
   #toast {
     left: 50%;

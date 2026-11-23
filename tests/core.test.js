@@ -333,6 +333,18 @@ test('automatic rest starts off for new journals and preserves the saved prefere
   }
 });
 
+test('timer sound is opt-in, survives backup, and older journals load silently', () => {
+  assert.equal(blankState().settings.timerSound,false);
+  const state=demoState(TODAY);
+  assert.equal(state.settings.timerSound,false);
+  delete state.settings.timerSound;
+  assert.ok(!validateState(state, EXERCISE_IDS).settings.timerSound);
+  state.settings.timerSound=true;
+  assert.equal(validateState(state, EXERCISE_IDS).settings.timerSound,true);
+  state.settings.timerSound='off';
+  assert.throws(()=>validateState(state, EXERCISE_IDS),/終了音/);
+});
+
 test('valid backups round-trip all records without sharing objects or restoring timers', () => {
   assert.equal(validateState(blankState(), EXERCISE_IDS).schemaVersion, 1);
   const source = demoState(TODAY);

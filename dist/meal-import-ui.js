@@ -55,23 +55,25 @@ export function openMealImport({day,modal,openDialog,bindForm,h,toast,onSave}) {
       const amountInput = 'type="number" min="0" step="any" inputmode="decimal"';
       const provenance = draft.source || '出典なし';
       return `<section class="panel" data-meal-row="${i}">
-        <label class="checkbox-row"><input type="checkbox" name="include-${i}" checked> <strong data-meal-name>${h(draft.name || '食品名未入力')}</strong>を取り込む</label>
+        <label class="checkbox-row"><input type="checkbox" name="include-${i}" checked> <strong data-meal-name id="meal-name-${i}">${h(draft.name || '食品名未入力')}</strong>を取り込む</label>
         <p class="small" data-meal-portion></p>
-        <div class="form-grid"><div class="field"><label for="meal-scale-${i}">食べた量の倍率</label><select id="meal-scale-${i}" data-meal-scale name="scale-${i}">
+        <div class="form-grid"><div class="field"><label id="meal-type-label-${i}" for="meal-type-${i}">食事区分</label>
+          <select id="meal-type-${i}" name="meal-${i}" aria-labelledby="meal-name-${i} meal-type-label-${i}">${mealOptions(draft.meal)}</select></div>
+          <div class="field"><label for="meal-scale-${i}">食べた量の倍率</label><select id="meal-scale-${i}" data-meal-scale name="scale-${i}">
           <option value="0.5">0.5倍</option><option value="1" selected>1倍</option><option value="1.5">1.5倍</option><option value="2">2倍</option><option value="custom">倍率を入力</option></select></div>
           <div data-custom-scale hidden>${field(i,'multiple','指定倍率',1,amountInput)}</div></div>
         <p class="small" data-meal-subtotal></p>
         <details${missing?' open':''}><summary>食品・量・栄養値を確認／編集</summary>
           <p class="small" style="overflow-wrap:anywhere" data-meal-source>出典：${h(provenance)}</p><div class="form-grid">
           ${field(i,'name','食品名',draft.name,'maxlength="200"')}
-          <div class="field"><label for="meal-type-${i}">食事区分</label><select id="meal-type-${i}" name="meal-${i}">${mealOptions(draft.meal)}</select></div>
           ${field(i,'amount',`倍率をかける前の量（${unit}）`,draft.baseAmount,amountInput)}
           </div><p class="small">${draft.basis === '100g' ? '100g' : '1食分'}あたりの栄養値</p><div class="form-grid">
           ${Object.entries(nutrients).map(([key,label])=>field(i,key,label,draft[key],amountInput)).join('')}
           </div></details></section>`;
     }
     openDialog('食事の取り込みを確認', `<p>${h(day)}の記録に追加します。量と推定値を確認し、不要な食品はチェックを外してください。</p>
-      <form novalidate id="meal-import-review">${drafts.map(row).join('')}
+      <form novalidate id="meal-import-review">${drafts.length>1 ? `<div class="field"><label for="meal-group-bulk">チェックした食品の食事区分を一括変更</label>
+        <select id="meal-group-bulk"><option value="">区分を選んで変更</option>${mealOptions('')}</select></div>` : ''}${drafts.map(row).join('')}
       <div class="info-box" id="meal-import-total" aria-live="polite"></div>${errorArea}<div class="modal-actions">
       <button type="button" class="button" data-meal-back>回答に戻る</button><button type="submit" class="button primary">選んだ食事を一括保存</button></div></form>`);
     const form = modal.querySelector('form');
@@ -106,7 +108,17 @@ export function openMealImport({day,modal,openDialog,bindForm,h,toast,onSave}) {
         : `選択${valid.length}件の合計　${nutritionLabel(mealTotals(valid))}`;
     }
     form.oninput = preview;
-    form.onchange = preview;
+    form.onchange = event => {
+      if (event.target.id === 'meal-group-bulk' && event.target.value) {
+        for (const [i, element] of rows.entries()) {
+          if (element.querySelector(`[name="include-${i}"]`).checked) {
+            element.querySelector(`[name="meal-${i}"]`).value = event.target.value;
+          }
+        }
+        event.target.value = '';
+      }
+      preview();
+    };
     form.querySelector('[data-meal-back]').onclick = start;
     preview();
     bindForm(data => {
