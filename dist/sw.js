@@ -11,7 +11,7 @@ const legacyKey = scope+'__legacy_cache__';
 const files = new Set([
   'index.html', 'styles.css', 'icon.svg', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
-  'app.js', 'ai-prompt.js', 'calorie-history.js', 'catalog.js',
+  'app.js', 'help.js', 'ai-prompt.js', 'calorie-history.js', 'catalog.js',
   'core.js', 'install.js', 'timer-sound.js', 'month-share.js', 'share.js', 'workout-input.js', 'catalog-settings.js',
   'meal-import.js', 'meal-import-ui.js', 'workout-import.js', 'workout-import-ui.js', 'workout-backup.js',
 ]);
@@ -78,7 +78,9 @@ async function repairMigration() {
   // A newer waiting worker may already have published its complete release.
   const published = await caches.match(indexUrl,{cacheName:publication});
   if (!published?.url.startsWith(releasePrefix)) {
-    retry ??= publishRelease().catch(()=>{}).finally(()=>{retry=null;});
+    // A reload after connectivity returns may overlap the previous, still-failing download.
+    if (retry && await retry) return;
+    retry ??= publishRelease().then(()=>true,()=>false).finally(()=>{retry=null;});
     await retry;
   }
 }

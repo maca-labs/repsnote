@@ -7,7 +7,8 @@ export async function preparePages(source, output, revision) {
   const release = 'releases/'+revision+'/';
   await mkdir(output,{recursive:true});
   await cp(source,output,{recursive:true});
-  await cp(source,path.join(output,release),{recursive:true,filter:file=>path.basename(file)!=='sw.js'});
+  // Pages replaces the previous release directory. Open tabs still need the same media URLs.
+  await cp(source,path.join(output,release),{recursive:true,filter:file=>!['sw.js','help'].includes(path.relative(source,file))});
   // Relative imports from app.js now stay within this immutable release directory.
   const html = (await readFile(path.join(source,'index.html'),'utf8'))
     .replace('href="./styles.css"',`href="./${release}styles.css"`)

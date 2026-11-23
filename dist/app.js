@@ -10,12 +10,14 @@ import { buildAiPrompt } from './ai-prompt.js';
 import { monthlyCardioRows, monthlyShareReport, drawMonthlySummary } from './month-share.js';
 import { createInstallController } from './install.js';
 import { createTimerSound } from './timer-sound.js';
+import { openHelp } from './help.js';
 import {
   cardEntryHeight, cardRowHeight, currentWeightLabel, planNutritionLines, setDetails, sharedWorkout,
   shareFilename, workoutCardLayout, workoutCsv,
 } from './share.js';
 
 const PATHS={
+  help:'M22 12a10 10 0 1 1-20 0 10 10 0 1 1 20 0ZM9 9a3 3 0 1 1 4.7 2.5c-1.3.7-1.7 1.2-1.7 2.5M12 17h.01',
   'copy-previous': [
     'M3 16.5V3.8a1.6 1.6 0 0 1 1.6-1.6h12',
     'M7.3 5.5h13.2a1.5 1.5 0 0 1 1.5 1.5v13.5a1.5 1.5 0 0 1-1.5 1.5H7.3a1.5 1.5 0 0 1-1.5-1.5V7a1.5 1.5 0 0 1 1.5-1.5Z',
@@ -110,7 +112,7 @@ function refreshFromStorage(){
   refreshingNote=true;
   try{
     // Food forms retain their inputs and resolve the save against the latest records.
-    if(modal.open&&!modal.querySelector('form[data-food-draft]'))modal.close();
+    if(modal.open&&!modal.querySelector('form[data-food-draft], .help-layout'))modal.close();
     render();
   }finally{refreshingNote=false;}
   if(focused){
@@ -261,7 +263,7 @@ function render(){
   const title=NAV.find(n=>n[0]===view)?.[1]??'トレーニング';
   const showInstall=install.shouldShowBanner();
   app.innerHTML=`<aside class="sidebar"><div class="brand"><img src="./icon.svg" alt="">REPS NOTE</div><nav class="nav" aria-label="メインメニュー">${NAV.map(([id,label,ic])=>`<button class="nav-item ${view===id?'active':''}" data-action="nav" data-view="${id}" ${view===id?'aria-current="page"':''}>${icon(ic)}${label}</button>`).join('')}</nav><div class="sidebar-bottom"><button class="nav-item" data-action="settings">${icon('settings')}設定・バックアップ</button></div></aside>
-  <main class="shell"><header class="topbar"><div><div class="eyebrow">REPS NOTE</div><h1>${title}</h1></div><div class="top-actions">${unitSwitch()}<button class="button primary" data-action="share" aria-label="記録をシェア">${icon('share')}<span class="share-label">記録をシェア</span></button>${ib('settings','設定・バックアップ','settings','', 'header-settings')}</div></header>
+  <main class="shell"><header class="topbar"><div><div class="eyebrow">REPS NOTE</div><h1>${title}</h1></div><div class="top-actions">${unitSwitch()}<button class="button primary" data-action="share" aria-label="記録をシェア">${icon('share')}<span class="share-label">記録をシェア</span></button>${ib('help','使い方を動画で見る','help','aria-haspopup="dialog"','header-help')}${ib('settings','設定・バックアップ','settings','', 'header-settings')}</div></header>
   ${showInstall?installBanner():''}
   ${mode==='demo'?`<div class="demo-banner"><span>サンプル表示中 · 架空の記録</span><button data-action="start-real">自分の記録をはじめる</button></div>`:''}
   ${storageProblem?`<div class="error-banner" role="alert">${h(storageProblem)}</div>`:''}
@@ -1280,6 +1282,7 @@ document.addEventListener('click',event=>{
   return handleAction(d);
 });
 async function handleAction(d){try{switch(d.action){
+  case 'help':openHelp({view, demo:mode==='demo', modal, openDialog});break;
   case 'template-save':case 'template-delete':case 'template-append':case 'template-apply':handleShareTemplate(d.action);break;
   case 'copy-ai-prompt':await copyAiPrompt();break;
   case 'save-note-draft':{

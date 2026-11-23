@@ -57,7 +57,13 @@ test('the service worker installs a complete static snapshot and ignores other a
     return path;
   }));
   assert.ok(files.includes('app.js') && files.includes('styles.css'));
-  for (const path of ['https://example.test/another-repo/app.js',scope+'backup.json',scope+'app.js?personal=1']) {
+  assert.ok(files.includes('help.js'));
+  assert.ok(!files.some(file=>file.startsWith('help/')), 'Guide media downloads on demand');
+  for (const path of ['https://example.test/another-repo/app.js',scope+'backup.json',scope+'app.js?personal=1',scope+'help/workout.mp4']) {
     events.fetch({request:new Request(path), respondWith:()=>assert.fail('Unexpected interception: '+path)});
   }
+  const revision='a'.repeat(40);
+  vm.runInNewContext(source.replace('__BUILD_REVISION__',revision),{self,URL,Request,caches});
+  const request=new Request(scope+'help/workout.mp4',{headers:{Range:'bytes=0-1'}});
+  events.fetch({request,respondWith:()=>assert.fail('Let the server answer video byte ranges')});
 });

@@ -52,11 +52,16 @@ test(`${legacy ? 'legacy network-first' : 'versioned'} PWA survives a partial up
   const first='a'.repeat(40), second='b'.repeat(40);
   let active=first, blocked=false;
   let failedRequests=0;
+  let holdFailure=false, pendingFailure;
   const server=http.createServer(async (request,response)=>{
     const file=new URL(request.url,'http://localhost').pathname.slice('/repsnote/'.length)||'index.html';
     try {
       if (blocked && file===`releases/${second}/month-share.js`) {
         failedRequests++;
+        if (holdFailure && !pendingFailure) {
+          pendingFailure=response;
+          return;
+        }
         response.writeHead(503);
         response.end();
         return;
@@ -114,10 +119,19 @@ test(`${legacy ? 'legacy network-first' : 'versioned'} PWA survives a partial up
     await expect(page.locator('#app')).toHaveText('first');
     expect(failedRequests).toBeGreaterThan(0);
 
+    if (legacy) {
+      // Keep the last failing download in flight as the user regains connectivity and reloads.
+      holdFailure=true;
+      await expect.poll(async ()=>{
+        if (!pendingFailure) await page.reload();
+        return Boolean(pendingFailure);
+      },{message:'a legacy recovery download is in flight',timeout:installTimeout}).toBe(true);
+    }
     blocked=false;
     if (legacy) {
-      // The bridge worker boots a complete legacy cache, then retries publishing on navigation.
       await page.reload();
+      await expect(page.locator('#app')).toHaveText('first');
+      pendingFailure.writeHead(503).end();
     }
     await expect.poll(async ()=>{
       const state=await workerState(page);
