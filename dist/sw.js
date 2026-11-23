@@ -13,7 +13,8 @@ const files = new Set([
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
   'app.js', 'help.js', 'ai-prompt.js', 'calorie-history.js', 'catalog.js',
   'core.js', 'install.js', 'timer-sound.js', 'month-share.js', 'share.js', 'workout-input.js', 'catalog-settings.js',
-  'meal-import.js', 'meal-import-ui.js', 'workout-import.js', 'workout-import-ui.js', 'workout-backup.js',
+  'meal-import.js', 'meal-import-ui.js', 'meal-import-draft.js', 'meal-photo.js',
+  'workout-import.js', 'workout-import-ui.js', 'workout-backup.js',
 ]);
 
 // Publish the document only after its entire immutable module graph is available.

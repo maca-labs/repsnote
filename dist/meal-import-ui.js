@@ -1,50 +1,190 @@
 import { fmt, mealTotals } from './core.js';
 import { buildMealSearchPrompt, mealGroups, nutrients, parseMealResponse, reconcileMealReview, reviewedMealDraft, mealImportEntry, prepareMealImport } from './meal-import.js';
+import { buildMealPhotoPrompt, validateMealPhoto, canShareMealPhoto, shareMealPhoto } from './meal-photo.js';
 
 function nutritionLabel(values) {
   return `${fmt(values.kcal, 1)} kcal / P ${fmt(values.p, 1)}・F ${fmt(values.f, 1)}・C ${fmt(values.c, 1)} g`;
 }
 
-export function openMealImport({day,modal,openDialog,bindForm,h,toast,onSave}) {
-  let menu = '', response = '', group = '昼食';
-  let previousReview = [];
+export function openMealImport({day,modal,openDialog,bindForm,h,toast,onSave,draft,onDraftChange=()=>{}}) {
+  let mode = draft?.mode === 'photo' ? 'photo' : 'text';
+  let menu = draft?.menu ?? '', response = draft?.response ?? '', group = draft?.group ?? '昼食';
+  let previousReview = draft?.previousReview ?? [];
+  let photo, previewUrl, currentForm;
+  function persist(stage) {
+    if (mode === 'photo') onDraftChange({mode,menu,response,group,stage,previousReview});
+  }
+  function releasePreview() {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    previewUrl = null;
+  }
+  modal.addEventListener('close', () => {
+    releasePreview();
+    photo = null;
+    if (!modal.open && modal.contains(currentForm) && mode === 'photo') onDraftChange(null);
+  }, {once:true});
   const cancel = '<button type="button" class="button" data-action="close">キャンセル</button>';
   const errorArea = '<div id="form-error" class="form-error" role="alert"></div>';
   const mealOptions = choice => mealGroups.map(meal =>
     `<option${meal === choice ? ' selected' : ''}>${meal}</option>`).join('');
 
   function start() {
-    openDialog('AIで食事を一括取り込み', `<p>食べたものを入力して検索用の質問文をコピーし、検索できるAIに貼り付けてください。</p>
-      <form data-food-draft><div class="field"><label for="meal-query">食べたもの</label>
-      <textarea id="meal-query" rows="3" maxlength="5000" placeholder="セブンイレブンの幕の内弁当、バナナ1本">${h(menu)}</textarea></div>
-      <button type="button" class="button" data-meal-prompt>AIへの質問文をコピー</button>
+    releasePreview();
+    const fromPhoto = mode === 'photo';
+    openDialog('AIで食事を一括取り込み', `<form id="meal-import-source" data-food-draft>
+      <div class="meal-source-switch" role="group" aria-label="取り込み方法">
+        <button type="button" data-meal-mode="text" aria-pressed="${!fromPhoto}">メニュー名から</button>
+        <button type="button" data-meal-mode="photo" aria-pressed="${fromPhoto}">写真から</button>
+      </div>
+      ${fromPhoto ? `<div class="meal-source-section">
+        <div class="meal-source-heading"><h3>食事の写真をAIに渡す</h3>
+          <button type="button" class="text-button" data-meal-jump>回答欄へ ↓</button></div>
+        <div class="meal-source-actions">
+          <button type="button" class="button" data-photo-pick="meal-photo-file">写真を選ぶ</button>
+          <button type="button" class="button" data-photo-pick="meal-photo-camera">カメラで撮る</button>
+        </div>
+        <input type="file" id="meal-photo-file" accept="image/*,.heic,.heif" aria-label="食事の写真を選ぶ" hidden>
+        <input type="file" id="meal-photo-camera" accept="image/*" capture="environment" aria-label="食事を撮影する" hidden>
+        <div class="meal-photo-selection" hidden><img id="meal-photo-preview" alt="選んだ食事の写真">
+          <div><span data-photo-name></span><span data-photo-preview-error hidden>この形式のプレビューは表示できません。</span>
+          <div class="meal-source-actions"><a class="text-button" data-meal-photo-download>写真を保存</a>
+          <button type="button" class="text-button" data-meal-photo-clear>写真を外す</button></div></div></div>
+        </div>` : '<p class="meal-source-note">食べたものを入力し、質問文を検索できるAIに貼り付けてください。</p>'}
+      <div class="field"><label for="meal-query">${fromPhoto ? '料理名・食べた量の補足（任意）' : '食べたもの'}</label>
+      <textarea id="meal-query" rows="2" maxlength="5000" placeholder="${fromPhoto ? '例：ごはんは半分だけ食べました' : 'セブンイレブンの幕の内弁当、バナナ1本'}">${h(menu)}</textarea></div>
+      ${fromPhoto ? '<button type="button" class="button primary" data-meal-photo-share hidden>写真と質問文を共有</button>' : ''}
+      ${fromPhoto ? '<p class="meal-source-note" data-meal-photo-manual></p>' : ''}
+      <div class="meal-source-actions"><button type="button" class="button" data-meal-prompt>AIへの質問文をコピー</button>
+        ${fromPhoto ? '<a class="button" href="https://chatgpt.com/" target="_blank" rel="noopener noreferrer">ChatGPTを開く</a>' : ''}</div>
+      ${fromPhoto ? '<p class="meal-source-note" data-meal-photo-status role="status"></p>' : ''}
       <div id="meal-prompt-fallback" hidden><div class="field"><label for="meal-prompt-text">コピーする質問文</label><textarea id="meal-prompt-text" readonly rows="4"></textarea></div></div>
-      <div class="divider"></div>
+      <section class="meal-return"><h3>${fromPhoto ? 'AIの回答をここに戻す' : 'AIの回答を取り込む'}</h3>
       <div class="field"><label for="meal-response">AIからの回答（JSON）</label>
-      <textarea id="meal-response" name="response" rows="4" required placeholder='{"items":[…]}'>${h(response)}</textarea></div>
+        <textarea id="meal-response" name="response" rows="3" required placeholder="AIから返ってきたJSON全体を貼り付け">${h(response)}</textarea></div>
+      <button type="button" class="text-button" data-meal-paste>回答を貼り付ける</button></section>
       <div class="field"><label for="meal-group">食事区分</label><select id="meal-group" name="group">${mealOptions(group)}</select></div>
       ${errorArea}<div class="modal-actions">${cancel}<button class="button primary" type="submit">読み込んで確認</button></div></form>`);
-    const query = modal.querySelector('#meal-query');
-    modal.querySelector('[data-meal-prompt]').onclick = async () => {
+    const form = currentForm = modal.querySelector('#meal-import-source');
+    const query = form.querySelector('#meal-query');
+    const answer = form.querySelector('#meal-response');
+    function remember() {
+      menu = query.value; response = answer.value; group = form.querySelector('#meal-group').value;
+      persist('source');
+    }
+    form.oninput = form.onchange = remember;
+    for (const button of form.querySelectorAll('[data-meal-mode]')) {
+      button.onclick = () => {
+        if (button.dataset.mealMode === mode) return;
+        remember();
+        mode = button.dataset.mealMode;
+        if (mode === 'text') onDraftChange(null);
+        start();
+        currentForm.querySelector('[aria-pressed="true"]').focus();
+      };
+    }
+    if (fromPhoto) {
+      form.querySelector('[data-meal-jump]').onclick = () => {
+        answer.focus({preventScroll:true});
+        form.querySelector('.meal-return').scrollIntoView({block:'start'});
+      };
+      form.querySelector('a[target="_blank"]').onclick = () => {
+        form.querySelector('.meal-return').scrollIntoView({block:'start'});
+      };
+      wirePhoto(form, query);
+    }
+    form.querySelector('[data-meal-prompt]').onclick = async () => {
       let prompt;
-      try { prompt = buildMealSearchPrompt(query.value); }
+      try { prompt = fromPhoto ? buildMealPhotoPrompt(query.value) : buildMealSearchPrompt(query.value); }
       catch (err) { query.focus(); toast(err.message); return; }
-      const fallback = modal.querySelector('#meal-prompt-fallback');
-      try { await navigator.clipboard.writeText(prompt); fallback.hidden = true; toast('質問文をコピーしました'); }
+      const fallback = form.querySelector('#meal-prompt-fallback');
+      try {
+        await navigator.clipboard.writeText(prompt); fallback.hidden = true;
+        toast('質問文をコピーしました');
+      }
       catch {
+        if (!form.isConnected || !modal.open) return;
         fallback.hidden = false;
         const field = fallback.querySelector('textarea');
         field.value = prompt; field.focus(); field.select();
         toast('選択した質問文をコピーしてください');
       }
     };
+    form.querySelector('[data-meal-paste]').onclick = async () => {
+      const original = answer.value;
+      try {
+        const text = await navigator.clipboard.readText();
+        if (!form.isConnected || !modal.open || answer.value !== original) return;
+        if (text) {
+          answer.value = text; remember(); answer.focus(); return;
+        }
+      } catch {}
+      if (form.isConnected && modal.open) { answer.focus(); toast('回答欄を長押しするか、端末の貼り付け操作を使ってください'); }
+    };
+    remember();
     bindForm(data => {
       menu = query.value; response = data.get('response'); group = data.get('group');
       review(reconcileMealReview(parseMealResponse(response, group), previousReview));
     });
   }
 
+  function wirePhoto(form, query) {
+    const card = form.querySelector('.meal-photo-selection');
+    const image = card.querySelector('img');
+    const share = form.querySelector('[data-meal-photo-share]');
+    const status = form.querySelector('[data-meal-photo-status]');
+    const manual = form.querySelector('[data-meal-photo-manual]');
+    const previewError = card.querySelector('[data-photo-preview-error]');
+    const download = card.querySelector('[data-meal-photo-download]');
+    function display() {
+      releasePreview();
+      card.hidden = !photo;
+      share.hidden = !photo || !canShareMealPhoto(photo);
+      manual.textContent = share.hidden
+        ? '質問文をコピーし、使いたいAIで写真を添付して質問文を貼り付けてください。'
+        : '共有先にAIが見つからない場合は、質問文をコピーし、AIで同じ写真を添付してください。';
+      status.textContent = '';
+      previewError.hidden = true;
+      image.hidden = !photo;
+      if (!photo) { image.removeAttribute('src'); download.removeAttribute('href'); return; }
+      card.querySelector('[data-photo-name]').textContent = photo.name;
+      image.onerror = () => { image.hidden = true; previewError.hidden = false; };
+      previewUrl = URL.createObjectURL(photo);
+      image.src = previewUrl;
+      download.href = previewUrl;
+      download.download = photo.name;
+    }
+    for (const button of form.querySelectorAll('[data-photo-pick]')) {
+      const input = form.querySelector('#'+button.dataset.photoPick);
+      button.onclick = () => input.click();
+      input.onchange = () => {
+        const selected = input.files[0];
+        input.value = '';
+        if (!selected) return;
+        try { photo = validateMealPhoto(selected); display(); }
+        catch (err) { status.textContent = err.message; }
+      };
+    }
+    card.querySelector('[data-meal-photo-clear]').onclick = () => { photo = null; display(); };
+    share.onclick = async () => {
+      if (!photo || share.disabled) return;
+      share.disabled = true;
+      try {
+        const result = await shareMealPhoto(photo, buildMealPhotoPrompt(query.value));
+        if (!form.isConnected || !modal.open) return;
+        if (result === 'shared') {
+          status.textContent = 'AIで質問文と写真を確認し、回答をこの下に貼り付けてください。';
+          form.querySelector('.meal-return').scrollIntoView({block:'start'});
+        }
+        else if (result === 'cancelled') status.textContent = '共有をキャンセルしました。写真は選択したままです。';
+        else status.textContent = '質問文をコピーし、AIで同じ写真を添付してください。';
+      } catch (err) { status.textContent = err.message; }
+      finally { share.disabled = false; }
+    };
+    display();
+  }
+
   function review(items) {
+    releasePreview();
     function field(i, key, label, value, attrs='') {
       const id = `meal-import-${key}-${i}`;
       return `<div class="field"><label for="${id}">${h(label)}</label>
@@ -78,7 +218,7 @@ export function openMealImport({day,modal,openDialog,bindForm,h,toast,onSave}) {
         <select id="meal-group-bulk"><option value="">区分を選んで変更</option>${mealOptions('')}</select></div>` : ''}${items.map(row).join('')}
       <div class="info-box" id="meal-import-total" aria-live="polite"></div>${errorArea}<div class="modal-actions">
       <button type="button" class="button" data-meal-back>回答に戻る</button><button type="submit" class="button primary">選んだ食事を一括保存</button></div></form>`);
-    const form = modal.querySelector('form');
+    const form = currentForm = modal.querySelector('form');
     const rows = [...form.querySelectorAll('[data-meal-row]')];
     function read(data, i) {
       const get = key => data.get(`${key}-${i}`);
@@ -88,11 +228,18 @@ export function openMealImport({day,modal,openDialog,bindForm,h,toast,onSave}) {
       for (const key of Object.keys(nutrients)) item[key] = number(key);
       return reviewedMealDraft(items[i].original,item);
     }
+    function snapshot(data) {
+      return items.map(({original}, i) => ({
+        original, values:read(data,i), included:data.has(`include-${i}`),
+        scale:data.get(`scale-${i}`), multiple:data.get(`multiple-${i}`),
+      }));
+    }
     function preview() {
       const data = new FormData(form), valid = [];
+      const selections = snapshot(data);
       let incomplete = 0;
       for (const [i, element] of rows.entries()) {
-        const item = read(data, i);
+        const item = selections[i].values;
         element.querySelector('[data-meal-name]').textContent = item.name.trim() || '食品名未入力';
         const portion = item.portion || (item.basis === '100g' ? '100gあたり' : '1食分あたり');
         element.querySelector('[data-meal-portion]').textContent = portion + (item.estimated ? ' · 推定値' : '');
@@ -108,6 +255,10 @@ export function openMealImport({day,modal,openDialog,bindForm,h,toast,onSave}) {
       form.querySelector('#meal-import-total').textContent = incomplete
         ? `未入力・要確認の食品が${incomplete}件あります。`
         : `選択${valid.length}件の合計　${nutritionLabel(mealTotals(valid))}`;
+      if (mode === 'photo') {
+        previousReview = selections;
+        persist('review');
+      }
     }
     form.oninput = preview;
     form.onchange = event => {
@@ -122,11 +273,7 @@ export function openMealImport({day,modal,openDialog,bindForm,h,toast,onSave}) {
       preview();
     };
     form.querySelector('[data-meal-back]').onclick = () => {
-      const data = new FormData(form);
-      previousReview = items.map(({original}, i) => ({
-        original, values:read(data,i), included:data.has(`include-${i}`),
-        scale:data.get(`scale-${i}`), multiple:data.get(`multiple-${i}`),
-      }));
+      previousReview = snapshot(new FormData(form));
       start();
     };
     preview();
@@ -145,5 +292,8 @@ export function openMealImport({day,modal,openDialog,bindForm,h,toast,onSave}) {
       onSave(prepareMealImport(selected).entries);
     });
   }
-  start();
+  if (mode === 'photo' && draft?.stage === 'review') {
+    try { review(reconcileMealReview(parseMealResponse(response, group), previousReview)); }
+    catch (err) { start(); currentForm.querySelector('#form-error').textContent = err.message; }
+  } else start();
 }

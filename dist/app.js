@@ -1,6 +1,7 @@
 import {EXERCISES} from './catalog.js';
 import {getExercises,getRoutines,editExercise,saveRoutine,deleteRoutine,EXERCISE_GROUPS} from './catalog-settings.js';
 import {openMealImport} from './meal-import-ui.js';
+import {readMealPhotoDraft, writeMealPhotoDraft} from './meal-import-draft.js';
 import {openWorkoutImport} from './workout-import-ui.js';
 import {mergeWorkoutImport} from './workout-import.js';
 import * as C from './core.js';
@@ -194,11 +195,13 @@ function showWorkoutImport(){
     return true;
   }});
 }
-function showMealImport(){
-  const targetDay=day;
-  openMealImport({day:targetDay,modal,openDialog,bindForm,h,toast,onSave(entries){
+function showMealImport(draft=null){
+  const targetDay=day, owner=mode;
+  openMealImport({day:targetDay,modal,openDialog,bindForm,h,toast,draft,
+    onDraftChange:next=>writeMealPhotoDraft(owner,targetDay,next),onSave(entries){
     state.meals[targetDay]=[...(state.meals[targetDay]??[]),...entries];
     if(!commit(`${entries.length}件の食事を取り込みました`))return false;
+    writeMealPhotoDraft(owner,targetDay,null);
     modal.close();
     return true;
   }});
@@ -1545,5 +1548,12 @@ window.addEventListener('pagehide',()=>{
   const field=app.querySelector(noteSelector);
   if(field&&field.value!==field.defaultValue)rememberNoteDraft(field);
 });
+const returningMeal=readMealPhotoDraft(mode);
+if(returningMeal){
+  view='food';
+  day=returningMeal.day;
+  month=day.slice(0,7);
+}
 render();
+if(returningMeal)showMealImport(returningMeal);
 

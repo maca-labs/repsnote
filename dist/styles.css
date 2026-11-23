@@ -1900,6 +1900,27 @@ dialog::backdrop {
 
 #meal-import-review .checkbox-row input { margin-right: 6px; vertical-align: middle; }
 #meal-import-review summary { min-height: 44px; padding: 8px 0; cursor: pointer; }
+
+#meal-import-source { display: grid; gap: 14px; }
+#meal-import-source [hidden] { display: none; }
+#meal-import-source .modal-actions { margin-top: 0; }
+.meal-source-switch { display: grid; grid-template-columns: 1fr 1fr; padding: 3px; border: 1px solid var(--line); border-radius: 7px; background: var(--soft); }
+.meal-source-switch button { min-height: 42px; padding: 5px 10px; border-radius: 4px; font-size: .9rem; font-weight: 650; }
+.meal-source-switch button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+.meal-source-section, .meal-return { display: grid; gap: 9px; min-width: 0; }
+.meal-source-heading { display: flex; justify-content: space-between; gap: 6px; align-items: center; flex-wrap: wrap; }
+.meal-source-heading .text-button { white-space: nowrap; text-decoration: underline; }
+.meal-return { padding-top: 15px; border-top: 1px solid var(--line); scroll-margin-top: 70px; }
+.meal-source-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.meal-source-actions a { text-decoration: none; }
+.meal-source-note { margin: 0; font-size: .86rem; line-height: 1.6; color: var(--muted); }
+.meal-source-note:empty { display: none; }
+.meal-photo-selection { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 10px; border: 1px solid var(--line); border-radius: 7px; }
+#meal-photo-preview { width: 84px; height: 72px; object-fit: contain; border-radius: 4px; background: var(--soft); }
+.meal-photo-selection span { display: block; overflow-wrap: anywhere; font-size: .87rem; }
+.meal-photo-selection .meal-source-actions { gap: 14px; }
+.meal-photo-selection a.text-button { display: inline-flex; align-items: center; }
+.meal-photo-selection .text-button, .meal-return .text-button { justify-self: start; text-decoration: underline; }
 .food-ratios { margin-block: 14px; }
 .food-ratios [role="group"] { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 5px; }
 .food-ratios .button { padding: 6px 12px; min-height: 38px; }
