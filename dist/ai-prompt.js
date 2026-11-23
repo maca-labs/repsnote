@@ -1,5 +1,5 @@
 import { getExercises } from './catalog-settings.js';
-import { cardioDetails, exerciseUnit, fmt, fromKg, mealTotals } from './core.js';
+import { cardioDetails, compareBodyMeasurements, exerciseUnit, fmt, fromKg, mealTotals } from './core.js';
 import { planNutritionLines, setDetails } from './share.js';
 
 const LOAD_LABELS = {single: '片手', total: '合計', stack: 'マシン表示', body: '追加重量'};
@@ -48,8 +48,14 @@ export function buildAiPrompt(state, day, {sample = false} = {}) {
     '',
     '【食事】', ...mealLines(state.meals[day] ?? []),
   ];
-  const measurement = state.body.find(entry => entry.date === day);
-  if (measurement) lines.push('', `当日の体重　${fmt(measurement.kg, 2)} kg`);
+  const measurements = state.body.filter(entry => entry.date === day).sort(compareBodyMeasurements);
+  if (measurements.length) {
+    const weights = measurements.map(entry => {
+      const time = entry.time ?? (measurements.length > 1 ? '時刻未記録' : '');
+      return (time ? time+' ' : '')+fmt(entry.kg, 2)+' kg';
+    });
+    lines.push('', '当日の体重　'+weights.join('、'));
+  }
   const plan = state.plan;
   if (plan && plan.startDate <= day && day <= plan.targetDate) {
     lines.push('', '【設定した目標】', `${plan.targetDate}までに体重 ${fmt(plan.targetWeight, 2)} kg`, ...planNutritionLines(plan));

@@ -1,4 +1,4 @@
-import { allSets, cardioDetails, fmt, fromKg } from './core.js';
+import { allSets, bodyMeasurementAsOf, cardioDetails, compareBodyMeasurements, fmt, fromKg } from './core.js';
 
 function workoutCounts(strength, cardio) {
   if (!cardio) return strength+'セット';
@@ -117,10 +117,11 @@ export function workoutCsv(state, getExercise, loadLabel) {
   return rows.map(row => row.map(cell).join(',')).join('\r\n');
 }
 
-export function currentWeightLabel(measurements, today) {
+export function currentWeightLabel(measurements, today, now) {
+  const measuredByToday = bodyMeasurementAsOf(today,now);
   let latest;
   for (const entry of measurements) {
-    if (entry.date <= today && (!latest || entry.date > latest.date)) latest = entry;
+    if (measuredByToday(entry) && (!latest || compareBodyMeasurements(entry,latest)>=0)) latest = entry;
   }
   return latest ? `現在 ${fmt(latest.kg)} kg` : '現在の体重は未記録';
 }

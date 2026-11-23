@@ -1013,7 +1013,6 @@ a {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
   padding: 11px 19px 13px;
   background: #fafafa;
@@ -1022,12 +1021,29 @@ a {
   border-color: #dedede;
 }
 
-.exercise-footer .text-button {
-  font-size: 13px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 32px;
+.exercise-footer .icon-button {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--line);
+  color: var(--ink);
+}
+
+.set-count-badge {
+  position: absolute;
+  top: 3px;
+  right: 4px;
+  display: grid;
+  place-items: center;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--ink);
+  color: white;
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1;
+  pointer-events: none;
 }
 
 .exercise-note {
@@ -2080,13 +2096,6 @@ dialog::backdrop {
   transform: rotate(var(--r));
 }
 
-.exercise-footer .exercise-timer-button {
-  width: 44px;
-  height: 44px;
-  flex: 0 0 44px;
-  border: 1px solid var(--line);
-}
-
 .exercise-footer .exercise-timer-button.has-timer {
   background: var(--ink);
   border-color: var(--ink);
@@ -2643,10 +2652,6 @@ dialog:has(#exercise-timer) { width: 420px; }
   .exercise-footer {
     padding: 7px 12px;
   }
-  .exercise-footer .text-button {
-    font-size: 12px;
-    min-height: 44px;
-  }
   .exercise-note {
     padding-left: 13px;
     font-size: 12px;
@@ -3026,3 +3031,6 @@ dialog:has(#exercise-timer) { width: 420px; }
 
 .cardio-form-fields .field { display: flex; flex-direction: column; }
 .cardio-form-fields input { margin-top: auto; }
+.signed-number { display: flex; gap: 4px; align-items: center; margin-top: auto; }
+.signed-number input { width: 0; flex: 1; min-width: 0; }
+.signed-number .icon-button { height: 44px; width: 44px; border: 1px solid var(--line); font-size: 20px; }

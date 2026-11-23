@@ -67,6 +67,9 @@ test('cardio records use time and optional metrics throughout editing, completio
   assert.equal(entries().sets[0].minutes,30);
   await ui.click('edit-set',{id});
   assert.doesNotMatch(ui.modal.innerHTML,/name="(kg|reps|inputUnit)"/);
+  assert.match(ui.modal.innerHTML,/name="inclinePct"[^>]+inputmode="decimal"/);
+  assert.match(ui.modal.innerHTML,/data-action="flip-incline"/);
+  assert.match(ui.modal.innerHTML,/name="steps"[^>]+inputmode="numeric"/);
   const error={};
   const form={querySelector:()=>error};
   ui.modal.contains=element=>element===form;

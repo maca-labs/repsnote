@@ -6,6 +6,7 @@ export const LB_KG = 0.45359237;
 export const EPS = 1e-6;
 export const uid = () => globalThis.crypto?.randomUUID?.() ?? `id-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 export const localDate = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+export const localTime = (d = new Date()) => `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
 export const parseDay = d => new Date(`${d}T12:00:00`);
 export function shiftDay(d,n) { const t=parseDay(d); t.setDate(t.getDate()+n); return localDate(t); }
 export const daysBetween = (a,b) => Math.round((Date.parse(`${b}T00:00:00Z`)-Date.parse(`${a}T00:00:00Z`))/86400000);
@@ -177,6 +178,15 @@ export function lastExercise(state,id,before) {
 export function mealTotals(entries=[]) {
   return entries.reduce((a,m)=>{ for(const k of ['kcal','p','f','c'])a[k]+=m[k]*m.amount/(m.basis==='100g'?100:1); return a; },{kcal:0,p:0,f:0,c:0});
 }
+export function compareBodyMeasurements(a,b) {
+  // An untimed legacy measurement sorts before timed entries from that day.
+  // Equal times retain insertion order in a stable sort.
+  return a.date.localeCompare(b.date) || (a.time ?? '').localeCompare(b.time ?? '');
+}
+export function bodyMeasurementAsOf(day, now = new Date()) {
+  const throughTime = day === localDate(now) ? localTime(now) : '23:59';
+  return entry => entry.date < day || (entry.date === day && (entry.time ?? '') <= throughTime);
+}
 export function monthlySummary(state, month) {
   const inMonth = date => date.startsWith(month+'-');
   const workoutDates = Object.keys(state.workouts).filter(inMonth).sort();
@@ -199,19 +209,21 @@ export function monthlySummary(state, month) {
   }
   const meals = Object.entries(state.meals).filter(([date, entries]) => inMonth(date) && entries.length);
   const kcal = meals.reduce((total, [, entries]) => total + mealTotals(entries).kcal, 0);
-  const body = state.body.filter(entry => inMonth(entry.date)).sort((a,b) => a.date.localeCompare(b.date));
+  const body = state.body.filter(entry => inMonth(entry.date)).sort(compareBodyMeasurements);
   return {
     month, trainingDays, strengthSets:completed-cardioSessions, volumeKg,
     updatedExercises:countRecordUpdates(state, workoutDates), cardioSessions, cardioMinutes,
     mealDays:meals.length, avgKcal:meals.length ? kcal / meals.length : null,
-    bodyDays:body.length, firstWeightKg:body[0]?.kg ?? null, lastWeightKg:body.at(-1)?.kg ?? null,
+    bodyDays:new Set(body.map(entry => entry.date)).size, bodyMeasurements:body.length,
+    firstWeightKg:body[0]?.kg ?? null, lastWeightKg:body.at(-1)?.kg ?? null,
   };
 }
 export const macroEnergy = m => m.p*4+m.f*9+m.c*4;
-export function planStats(plan,body=[],today=localDate()) {
+export function planStats(plan,body=[],today=localDate(),now) {
   if(!plan)return null;
   const span=daysBetween(plan.startDate,plan.targetDate);
-  const values=body.filter(b=>b.date>=plan.startDate && b.date<=today).sort((a,b)=>a.date.localeCompare(b.date));
+  const measuredByToday = bodyMeasurementAsOf(today,now);
+  const values=body.filter(b=>b.date>=plan.startDate && measuredByToday(b)).sort(compareBodyMeasurements);
   const current=values.at(-1)?.kg??plan.startWeight;
   const delta=plan.targetWeight-plan.startWeight;
   return {current,weekly:span>0?delta/span*7:0,remainingDays:Math.max(0,daysBetween(today,plan.targetDate)),progress:delta===0?100:Math.max(0,Math.min(100,(current-plan.startWeight)/delta*100)),change:current-plan.startWeight,span};
@@ -313,8 +325,19 @@ export function validateState(input,exerciseIds=[]) {
     }
   }
   if(!unique(foodIds))bad('食事IDが重複しています。');
-  if(!array(s.body,20000)||!unique(s.body.map(b=>b?.date)))bad('体重の記録が正しくありません。');
-  for(const b of s.body)if(!obj(b)||!date(b.date)||!num(b.kg,10,500)||!(b.bodyFat==null||num(b.bodyFat,1,80)))bad('体重・体脂肪率が正しくありません。');
+  if(!array(s.body,20000))bad('体重の記録が正しくありません。');
+  const measurementIds=new Set(), legacyDates=new Set();
+  for(const b of s.body){
+    if(!obj(b)||!date(b.date)||!num(b.kg,10,500)||!(b.bodyFat==null||num(b.bodyFat,1,80)))bad('体重・体脂肪率が正しくありません。');
+    if(b.time!=null && (typeof b.time!=='string'||b.time.length!==5||!/^([01]\d|2[0-3]):[0-5]\d$/.test(b.time)))bad('体重の測定時刻が正しくありません。');
+    if(Object.hasOwn(b,'id')){
+      if(!id(b.id)||measurementIds.has(b.id))bad('体重の記録IDが正しくありません。');
+      measurementIds.add(b.id);
+    }else{
+      if(b.time!=null||legacyDates.has(b.date))bad('体重の記録を識別できません。');
+      legacyDates.add(b.date);
+    }
+  }
   if(s.plan!==null){const p=s.plan;if(!obj(p)||!date(p.startDate)||!date(p.targetDate)||daysBetween(p.startDate,p.targetDate)<=0||!num(p.startWeight,10,500)||!num(p.targetWeight,10,500)||!['kcal','p','f','c'].every(k=>num(p[k],0,100000)))bad('目標の値・期間が正しくありません。');}
   // Timer state is ephemeral and deliberately not restored from a backup.
   return {...structuredClone(s),timer:null};

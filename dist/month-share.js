@@ -23,7 +23,7 @@ export function monthlyShareReport(summary, unit, showWeights, showDate) {
   if (summary.bodyDays > 0) {
     if (!showWeights) {
       rows.push({label:'体重の記録日数', value:`${summary.bodyDays}日`});
-    } else if (summary.bodyDays === 1) {
+    } else if ((summary.bodyMeasurements ?? summary.bodyDays) === 1) {
       rows.push({label:'体重（記録1日）', value:`${fmt(summary.lastWeightKg, 2)} kg`});
     } else {
       rows.push({label:'体重（初回 → 最終）',

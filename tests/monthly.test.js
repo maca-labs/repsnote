@@ -29,12 +29,12 @@ test('monthly summary includes only completed activities and distinguishes missi
   assert.deepEqual(monthlySummary(state,'2027-01'),{
     month:'2027-01',trainingDays:2,strengthSets:2,volumeKg:500,updatedExercises:1,
     cardioSessions:2,cardioMinutes:39.5,mealDays:2,avgKcal:300,
-    bodyDays:2,firstWeightKg:71.2,lastWeightKg:69.3,
+    bodyDays:2,bodyMeasurements:2,firstWeightKg:71.2,lastWeightKg:69.3,
   });
   assert.deepEqual(monthlySummary(state,'2027-03'),{
     month:'2027-03',trainingDays:0,strengthSets:0,volumeKg:0,updatedExercises:0,
     cardioSessions:0,cardioMinutes:0,mealDays:0,avgKcal:null,
-    bodyDays:0,firstWeightKg:null,lastWeightKg:null,
+    bodyDays:0,bodyMeasurements:0,firstWeightKg:null,lastWeightKg:null,
   });
   state.meals['2027-03-01'] = [food(0)];
   assert.equal(monthlySummary(state,'2027-03').avgKcal,0);

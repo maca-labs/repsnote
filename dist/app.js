@@ -311,12 +311,24 @@ function cardioEditor(set,ex,date,focusDuration){
   const fields=C.CARDIO_FIELDS.map(field=>{
     const {key,label,unit,min,max,step,required}=field;
     const keyboard=step===1?'numeric':'decimal';
-    // iOS decimal keyboards can omit a minus key. Allow signed keyboard entry for downhill incline.
-    const mode=min<0?'':`inputmode="${keyboard}"`;
-    return inputField(key,`${label}（${unit}）`,set[key]??'',
-      `type="number" min="${min}" max="${max}" step="${step}" ${mode} ${required?'required':''}`);
+    const attrs=`type="number" min="${min}" max="${max}" step="${step}" inputmode="${keyboard}" ${required?'required':''}`;
+    if(key!=='inclinePct')return inputField(key,`${label}（${unit}）`,set[key]??'',attrs);
+    return `<div class="field"><label for="field-inclinePct">傾斜（%）</label><div class="signed-number">
+      <input id="field-inclinePct" name="inclinePct" value="${h(set.inclinePct??'')}" ${attrs}>
+      <button type="button" class="icon-button" data-action="flip-incline" aria-label="入力した傾斜の正負を切り替える" title="傾斜の正負を切り替える">±</button></div></div>`;
   });
   openDialog('有酸素の記録',`<p>${h(ex.name)} · ${dateLabel(date,true)}</p><form aria-describedby="cardio-form-hint"><p id="cardio-form-hint">時間以外は任意です。</p><div class="form-grid cardio-form-fields">${fields.join('')}</div>${formEnd('保存する')}</form>`);
+  const incline=modal.querySelector('[name="inclinePct"]');
+  if(incline){
+    const flip=modal.querySelector('[data-action="flip-incline"]');
+    const updateSignButton=()=>{flip.disabled=!Number.isFinite(incline.valueAsNumber)||incline.valueAsNumber===0;};
+    incline.addEventListener('input',updateSignButton);
+    updateSignButton();
+    flip.addEventListener('click',()=>{
+      incline.valueAsNumber=-incline.valueAsNumber;
+      incline.focus();
+    });
+  }
   bindForm(data=>{
     const values={};
     for(const field of C.CARDIO_FIELDS){
@@ -341,20 +353,62 @@ function focusSet(id, field = 'set-weight', reveal = false) {
 }
 function renderStrengthTable(inst,ex,last,prs,u){return `<div class="set-table"><div class="set-grid labels"><span>SET</span><span class="previous">前回</span><div class="weight-heading"><span>重量</span>${unitSwitch(`${ex.name}の重量表示単位`,inst.id,u)}</div><span>回数</span><span>完了</span><span>複製</span><span></span><span>削除</span></div>${inst.sets.map((s,i)=>{const prev=last?.sets[i]??last?.sets.at(-1),isPR=prs[ex.id]?.id===s.id;return `<div class="set-grid set-row ${s.completed?'done':''}"><div class="set-num">${s.kind==='warmup'?'W':i+1}${isPR?icon('crown','tiny-crown'):s.assisted?'<span class="small">補</span>':''}</div><div class="previous ${prev?'has-previous':''}">${prev?`<span class="previous-label">前回 </span>${weight(prev.kg,u)} × ${prev.reps}`:'—'}</div><select aria-label="${h(ex.name)} セット${i+1}の重量（${u}）" data-change="set-weight" data-exercise="${h(ex.id)}" data-load="${ex.load}" data-id="${h(s.id)}">${weightOptions(s,last,ex)}</select><select aria-label="${h(ex.name)} セット${i+1}の回数" data-change="set-reps" data-id="${h(s.id)}">${options([...new Set([...Array.from({length:30},(_,i)=>i+1),40,50,60,100,s.reps])].sort((a,b)=>a-b),s.reps,n=>n,'<option value="custom">直接入力…</option>')}</select><button class="complete-check ${s.completed?'checked':''}" data-action="complete-set" data-id="${h(s.id)}" data-exercise="${h(ex.id)}" aria-label="${h(ex.name)} セット${i+1}を${s.completed?'未完了にする':'完了にする'}" aria-pressed="${s.completed}">${icon('check')}</button>${ib('copy-set',`${ex.name} セット${i+1}をコピー`,'copy',`data-id="${h(s.id)}" data-instance="${h(inst.id)}"`)}${ib('edit-set',`${ex.name} セット${i+1}の詳細を編集`,'more',`data-id="${h(s.id)}"`)}${ib('delete-set',`${ex.name} セット${i+1}を削除`,'trash',`data-id="${h(s.id)}" data-date="${day}"`)}</div>`;}).join('')}</div>`;}
 function renderExercise(inst,prs){const ex=exercise(inst.exerciseId),last=C.lastExercise(state,ex.id,day),u=exerciseUnit(ex.id);return `<article class="exercise-card" id="exercise-${h(inst.id)}"><div class="exercise-head"><div class="row"><div class="badge-icon">${icon(ex.load==='cardio'?'heart':'dumbbell')}</div><div><div class="exercise-title">${h(ex.name)}</div><div class="exercise-sub">${h(ex.group)} · ${h(ex.equipment)} · ${h(loadLabel(ex))}</div></div></div><div class="exercise-tools">${ib('favorite',state.favorites.includes(ex.id)?'お気に入りから外す':'お気に入りに追加','star',`data-id="${h(ex.id)}"`,state.favorites.includes(ex.id)?'active':'')}${ib('exercise-menu','種目の編集・削除','more',`data-id="${h(inst.id)}"`)}</div></div>${ex.load==='cardio'?renderCardioTable(inst,ex,last):renderStrengthTable(inst,ex,last,prs,u)}<div class="exercise-footer">
-  <button type="button" class="text-button" data-action="add-set" data-id="${h(inst.id)}">${icon('plus')}セットを追加</button>
-  <button type="button" class="text-button" data-action="add-three-sets" data-id="${h(inst.id)}" title="この種目の最後のセットを3つ複製" ${inst.sets.length?'':'disabled'}>${icon('copy')}同じセットを3つ追加</button>
+  ${ib('add-set',ex.name+'のセットを1つ追加','plus',`data-id="${h(inst.id)}"`)}
+  <button type="button" class="icon-button" data-action="add-three-sets" data-id="${h(inst.id)}" title="最後のセットを3つコピーして追加" aria-label="${h(ex.name)}の最後のセットを3つコピーして追加" ${inst.sets.length?'':'disabled'}>
+    ${icon('copy')}<span class="set-count-badge" aria-hidden="true">3</span>
+  </button>
   ${ib('timer-open',ex.name+'の休憩タイマー','clock',`data-exercise="${h(ex.id)}" aria-haspopup="dialog"`,'exercise-timer-button')}
-  <button type="button" class="text-button" data-action="copy-exercise-previous" data-id="${h(inst.id)}">${icon('history')}${last?`${dateLabel(last.date)}をコピー`:'前回のセット'}</button>
+  ${ib('copy-exercise-previous',ex.name+'の前回のセットをコピー'+(last?`（${dateLabel(last.date)}）`:''),'history',`data-id="${h(inst.id)}"`)}
 </div>${inst.note?`<div class="exercise-note">${h(inst.note)}</div>`:''}</article>`;}
 function macroRows(t,plan=state.plan){return [['p','P','たんぱく質','#202020'],['f','F','脂質','#656565'],['c','C','炭水化物','#969696']].map(([key,abbr,label,color])=>`<div class="progress-row"><div class="progress-info"><span class="progress-label"><i class="macro-dot" style="background:${color}"></i><strong>${abbr}</strong>${label}</span><span class="mono">${nf(t[key])}<span class="muted"> / ${plan?.[key]>0?nf(plan[key])+' g':'目標未設定'}</span></span></div><div class="progress-track"><div class="progress-fill" style="background:${color};width:${progress(t[key],plan?.[key])}%"></div></div></div>`).join('');}
 function calorieRing(t,big=false){const target=state.plan?.kcal;return `<div class="ring-wrap"><div class="cal-ring" style="--value:${progress(t.kcal,target)};--ring:${target&&t.kcal>target?'#222222':'#444444'}"><div class="inner">${icon('fire')}${big?'<div class="small">ENERGY</div>':''}</div></div><div><div class="ring-number">${nf(t.kcal,0)}<span>kcal</span></div><div class="mini-subtitle">${target>0?`目標 ${nf(target,0)} kcal`:'カロリー目標は未設定'}</div>${target>0?`<div class="pill" style="margin-top:9px">${t.kcal<=target?'あと':'目標より'} ${nf(Math.abs(target-t.kcal),0)} kcal${t.kcal>target?'多い':''}</div>`:''}</div></div>`;}
 function nutritionPanel(){const t=C.mealTotals(state.meals[day]);return `<section class="panel"><div class="panel-heading"><h2>${day===today?'今日の栄養':'この日の栄養'}</h2><span class="tag">${dateLabel(day)}</span></div>${calorieRing(t)}${macroRows(t)}${btn('nav-food','食事を記録する','plus','full')}</section>`;}
 function highlightPanel(prs){const pr=Object.values(prs).sort((a,b)=>b.date.localeCompare(a.date))[0];const u=pr?exerciseUnit(pr.exerciseId):unit();return `<section class="panel record-highlight"><div class="record-crown">${icon('crown')}</div><div class="eyebrow">PERSONAL BEST</div><h2>${pr?h(exercise(pr.exerciseId).name):'自己ベストは未登録です'}</h2><div class="big-record">${pr?weight(pr.kg,u):'—'}<span>${u}</span></div><div class="mini-subtitle">${pr?`${pr.reps} 回 · ${h(shortLoad(exercise(pr.exerciseId)))} · ${dateLabel(pr.date)}`:'完了したセットからベストを見つけます'}</div><button class="text-button" data-action="nav" data-view="records">すべての自己ベストを見る</button></section>`;}
-function weightPanel(){const values=state.body.filter(b=>b.date<=day).sort((a,b)=>a.date.localeCompare(b.date)),latest=values.at(-1),first=values[0];return `<section class="panel"><div class="panel-heading" style="margin-bottom:8px"><h2>からだの変化</h2>${icon('chart')}</div><div class="mini-weight">${latest?nf(latest.kg):'—'}<span>kg</span>${latest&&first?`<span class="change">初回比 ${latest.kg-first.kg>0?'+':''}${nf(latest.kg-first.kg)} kg</span>`:''}</div>${miniChart(values)}<div class="between"><span class="small">${latest?dateLabel(latest.date)+'の記録':'体重の記録からはじめよう'}</span><button class="text-button" data-action="nav" data-view="body">計画を見る</button></div></section>`;}
-function miniChart(values){if(!values.length)return '<div style="height:55px"></div>';const ys=values.map(b=>b.kg),min=Math.min(...ys)-.2,max=Math.max(...ys)+.2;const pts=values.map((v,i)=>[8+i/Math.max(1,values.length-1)*254,75-(v.kg-min)/(max-min)*60]);return `<svg class="mini-graph" viewBox="0 0 270 90" role="img" aria-label="体重の推移"><path d="M8 80H262" stroke="#e1e1e1"/><path d="M${pts.map(p=>p.join(',')).join(' L')} L${pts.at(-1)[0]},80 L8,80Z" fill="#f1f1f1"/><path d="M${pts.map(p=>p.join(',')).join(' L')}" fill="none" stroke="#333333" stroke-width="2.5" stroke-linejoin="round"/><circle cx="${pts.at(-1)[0]}" cy="${pts.at(-1)[1]}" r="4" fill="#333333" stroke="white" stroke-width="2"/></svg>`;}
+function weightPanel(){const values=state.body.filter(C.bodyMeasurementAsOf(day<today?day:today)).sort(C.compareBodyMeasurements),latest=values.at(-1),first=values[0];return `<section class="panel"><div class="panel-heading" style="margin-bottom:8px"><h2>からだの変化</h2>${icon('chart')}</div><div class="mini-weight">${latest?nf(latest.kg):'—'}<span>kg</span>${latest&&first?`<span class="change">初回比 ${latest.kg-first.kg>0?'+':''}${nf(latest.kg-first.kg)} kg</span>`:''}</div>${miniChart(values)}<div class="between"><span class="small">${latest?measurementLabel(latest)+'の記録':'体重の記録からはじめよう'}</span><button class="text-button" data-action="nav" data-view="body">計画を見る</button></div></section>`;}
+function measurementLabel(entry, long=false){
+  return dateLabel(entry.date,long)+(entry.time?' '+entry.time:'');
+}
+
+// Use local calendar coordinates. An untimed reading occupies the start of its day on the chart.
+function measurementPosition({date,time}){
+  return Date.parse(date+'T'+(time||'00:00')+':00Z');
+}
+
+function miniChart(values){if(!values.length)return '<div style="height:55px"></div>';const ys=values.map(b=>b.kg),min=Math.min(...ys)-.2,max=Math.max(...ys)+.2;const start=measurementPosition(values[0]),span=measurementPosition(values.at(-1))-start;const pts=values.map(v=>[8+(span?(measurementPosition(v)-start)/span:0)*254,75-(v.kg-min)/(max-min)*60]);return `<svg class="mini-graph" viewBox="0 0 270 90" role="img" aria-label="体重の推移"><path d="M8 80H262" stroke="#e1e1e1"/><path d="M${pts.map(p=>p.join(',')).join(' L')} L${pts.at(-1)[0]},80 L8,80Z" fill="#f1f1f1"/><path d="M${pts.map(p=>p.join(',')).join(' L')}" fill="none" stroke="#333333" stroke-width="2.5" stroke-linejoin="round"/><circle cx="${pts.at(-1)[0]}" cy="${pts.at(-1)[1]}" r="4" fill="#333333" stroke="white" stroke-width="2"/></svg>`;}
 function renderFood(){const list=state.meals[day]??[],t=C.mealTotals(list);return `<div class="layout"><section class="main-col">${dateStrip()}<div class="panel food-summary">${calorieRing(t,true)}<div>${macroRows(t)}<div class="small" style="margin-top:12px">PFC由来のエネルギー ${nf(C.macroEnergy(t),0)} kcal</div></div></div>${calorieHistoryChart(state.meals,day)}<div class="section-heading"><h2>食事の記録</h2><div class="row">${btn('meal-import','AIから一括取込','download')}${btn('copy-food-day','前日をコピー','copy')}${btn('add-food','食事を追加','plus','primary')}</div></div>${['朝食','昼食','夕食','間食'].map(meal=>{const ms=list.filter(m=>m.meal===meal);return `<section class="meal-section"><div class="meal-header"><span>${meal}</span><small>${nf(C.mealTotals(ms).kcal,0)} kcal</small></div>${ms.length?ms.map(m=>{const mt=C.mealTotals([m]);return `<div class="food-item"><div><h3>${h(m.name)}</h3><div class="food-detail">${nf(m.amount,2)}${m.basis==='100g'?' g':' 食分'} · P ${nf(mt.p)} / F ${nf(mt.f)} / C ${nf(mt.c)} g</div></div><div class="row"><div class="food-value">${nf(mt.kcal,0)}<span> kcal</span></div>${ib('copy-food','この食事をコピー','copy',`data-id="${h(m.id)}"`)}${ib('edit-food','この食事を編集','edit',`data-id="${h(m.id)}"`)}</div></div>`;}).join(''):`<button class="empty-line" style="width:100%;text-align:left" data-action="add-food" data-meal="${meal}">＋ ${meal}を記録する</button>`}</section>`;}).join('')}</section><aside class="side-col"><section class="panel"><div class="panel-heading"><h2>いつもの食事</h2>${icon('heart')}</div><p class="mini-subtitle">登録した食品を選んで、量だけ入力。</p>${state.foods.length?`<div class="suggestions">${state.foods.map(f=>`<button class="suggestion" data-action="saved-food" data-id="${h(f.id)}">${icon('plus')}${h(f.name.replace('（サンプル）',''))}</button>`).join('')}</div>`:`<div class="empty-line" style="margin-top:15px">食事を追加するときに「いつもの食事に登録」を選べます。</div>`}${btn('manage-foods','登録した食品を管理','edit','full ghost')}</section><section class="panel"><div class="panel-heading"><h2>目標のPFCバランス</h2>${icon('target')}</div><p class="mini-subtitle">自分の計画に合わせて、1日のカロリーとPFC目標を設定。</p>${state.plan?['kcal','p','f','c'].map((k,i)=>`<div class="stat-line"><span>${['カロリー','たんぱく質','脂質','炭水化物'][i]}</span><strong>${state.plan[k]>0?nf(state.plan[k])+(i?' g':' kcal'):'未設定'}</strong></div>`).join(''):''}${btn('edit-plan','目標を設定する','edit','full')}</section><div class="tip-box"><strong>カロリーとPFCの計算</strong>カロリーはパッケージの値を入力できます。PFCから計算した値とは、食物繊維や表示の丸めなどで差が出ることがあります。</div></aside></div>`;}
-function renderBody(){const plan=state.plan,ps=C.planStats(plan,state.body,today),body=[...state.body].sort((a,b)=>b.date.localeCompare(a.date)),latest=body.filter(b=>b.date<=today)[0];return `<div class="layout"><section class="main-col"><div class="workout-hero"><div><div class="eyebrow">BODY LOG</div><div class="hero-title">${plan?(plan.targetWeight<plan.startWeight?'減量プラン':plan.targetWeight>plan.startWeight?'増量プラン':'体重維持プラン'):'体重の記録'}</div>${plan?`<p>${dateLabel(plan.startDate)} — ${dateLabel(plan.targetDate)}</p>`:''}</div></div><div class="metric-grid"><div class="metric"><div class="label">スタート</div><div class="value">${plan?nf(plan.startWeight):'—'}<span>kg</span></div></div><div class="metric"><div class="label">現在の体重</div><div class="value">${latest?nf(latest.kg):'—'}<span>kg</span></div></div><div class="metric"><div class="label">目標体重</div><div class="value">${plan?nf(plan.targetWeight):'—'}<span>kg</span></div></div></div><section class="panel"><div class="panel-heading"><h2>体重の推移</h2>${btn('add-body','体重を記録','plus','primary')}</div>${bodyChart()}<div class="chart-legend"><span>実際の記録</span><span>計画上のライン</span></div></section><div class="section-heading"><h2>からだの記録</h2><small>体重はkgで記録</small></div><section class="panel">${body.length?body.map(b=>`<div class="body-entry"><div>${dateLabel(b.date,true)}<small>${b.bodyFat!=null?`体脂肪率 ${nf(b.bodyFat)}%`:'体脂肪率の記録なし'}</small></div><div class="row"><strong>${nf(b.kg)} <small style="display:inline">kg</small></strong>${ib('edit-body','体重の記録を訂正','edit',`data-date="${b.date}"`)}</div></div>`).join(''):`<div class="empty">${icon('chart')}<h3>変化を記録しよう</h3><p>体重と、任意で体脂肪率を記録できます。</p></div>`}</section></section><aside class="side-col"><section class="panel"><div class="panel-heading"><h2>ボディメイク計画</h2>${icon('target')}</div>${plan?`<div class="pill">${plan.targetWeight<plan.startWeight?'減量':plan.targetWeight>plan.startWeight?'増量':'体重維持'}プラン</div><div class="stat-line"><span>開始</span><strong>${dateLabel(plan.startDate)}</strong></div><div class="stat-line"><span>目標日</span><strong>${dateLabel(plan.targetDate)}</strong></div><div class="stat-line"><span>計画上のペース</span><strong>${ps.weekly>0?'+':''}${nf(ps.weekly,2)} kg/週</strong></div><div class="stat-line"><span>目標日まで</span><strong>${ps.remainingDays} 日</strong></div><div class="progress-row"><div class="progress-info"><span>目標への進み具合</span><strong>${nf(ps.progress,0)}%</strong></div><div class="progress-track"><div class="progress-fill" style="width:${ps.progress}%"></div></div></div><p class="mini-subtitle" style="margin-top:14px">計画線は開始と目標を結んだ目安です。体重の変化を予測・保証するものではありません。</p>`:'<p class="mini-subtitle">スタートと目標、期間を決めて、実際の記録と見比べられます。</p>'}${btn('edit-plan',plan?'計画・PFC目標を編集':'計画をつくる','edit','full')}${btn('share-plan','計画をシェア','share','full ghost')}</section>${nutritionPanel()}</aside></div>`;}
-function bodyChart(){const p=state.plan,bs=state.body.filter(b=>b.date<=today).sort((a,b)=>a.date.localeCompare(b.date));if(!bs.length&&!p)return `<div class="empty">${icon('chart')}<p>体重を記録すると、ここにグラフが表示されます。</p></div>`;const dates=[...bs.map(b=>b.date),...(p?[p.startDate,p.targetDate]:[])].sort(),start=dates[0],end=dates.at(-1),span=Math.max(1,C.daysBetween(start,end));const weights=[...bs.map(b=>b.kg),...(p?[p.startWeight,p.targetWeight]:[])],min=Math.floor(Math.min(...weights)-.5),max=Math.ceil(Math.max(...weights)+.5),xp=d=>52+C.daysBetween(start,d)/span*550,yp=kg=>210-(kg-min)/(max-min)*170;return `<svg class="chart" viewBox="0 0 630 260" role="img" aria-label="体重推移グラフ。実測値は下のからだの記録に掲載。計画線は目標日までの直線。">${Array.from({length:5},(_,i)=>{const val=min+(max-min)/4*i,y=yp(val);return `<line x1="52" x2="602" y1="${y}" y2="${y}" stroke="#e2e2e2" stroke-dasharray="4 5"/><text x="43" y="${y+4}" text-anchor="end" font-size="12" fill="#686868">${nf(val)}</text>`;}).join('')}<text x="9" y="21" font-size="11" fill="#686868">kg</text>${p?`<path d="M${xp(p.startDate)},${yp(p.startWeight)} L${xp(p.targetDate)},${yp(p.targetWeight)}" stroke="#777777" stroke-width="2" stroke-dasharray="6 6" fill="none"/>`:''}${bs.length?`<path d="M${bs.map(b=>`${xp(b.date)},${yp(b.kg)}`).join(' L')}" fill="none" stroke="#252525" stroke-width="3" stroke-linejoin="round"/>${bs.map(b=>`<circle cx="${xp(b.date)}" cy="${yp(b.kg)}" r="4" fill="#252525" stroke="white" stroke-width="2"><title>${b.date}：${b.kg}kg</title></circle>`).join('')}`:''}<text x="52" y="242" font-size="12" fill="#686868">${dateLabel(start)}</text><text x="602" y="242" text-anchor="end" font-size="12" fill="#686868">${dateLabel(end)}</text></svg>`;}
+function bodyRecordAttrs(entry){
+  return entry.id ? `data-id="${h(entry.id)}"` : `data-date="${h(entry.date)}"`;
+}
+function renderBodyEntry(entry){
+  const when=measurementLabel(entry,true);
+  return `<div class="body-entry"><div>${when}${entry.time?'':' · 時刻未記録'}<small>${entry.bodyFat==null?'体脂肪率の記録なし':'体脂肪率 '+nf(entry.bodyFat)+'%'}</small></div>
+    <div class="row"><strong>${nf(entry.kg)} <small style="display:inline">kg</small></strong>
+    ${ib('edit-body',when+' '+nf(entry.kg)+'kgの記録を訂正','edit',bodyRecordAttrs(entry))}</div></div>`;
+}
+function renderBody(){const plan=state.plan,ps=C.planStats(plan,state.body,today),body=[...state.body].sort(C.compareBodyMeasurements).reverse(),latest=body.find(C.bodyMeasurementAsOf(today));return `<div class="layout"><section class="main-col"><div class="workout-hero"><div><div class="eyebrow">BODY LOG</div><div class="hero-title">${plan?(plan.targetWeight<plan.startWeight?'減量プラン':plan.targetWeight>plan.startWeight?'増量プラン':'体重維持プラン'):'体重の記録'}</div>${plan?`<p>${dateLabel(plan.startDate)} — ${dateLabel(plan.targetDate)}</p>`:''}</div></div><div class="metric-grid"><div class="metric"><div class="label">スタート</div><div class="value">${plan?nf(plan.startWeight):'—'}<span>kg</span></div></div><div class="metric"><div class="label">現在の体重</div><div class="value">${latest?nf(latest.kg):'—'}<span>kg</span></div></div><div class="metric"><div class="label">目標体重</div><div class="value">${plan?nf(plan.targetWeight):'—'}<span>kg</span></div></div></div><section class="panel"><div class="panel-heading"><h2>体重の推移</h2>${btn('add-body','体重を記録','plus','primary')}</div>${bodyChart()}<div class="chart-legend"><span>実際の記録</span><span>計画上のライン</span></div></section><div class="section-heading"><h2>からだの記録</h2><small>体重はkgで記録</small></div><section class="panel">${body.length?body.map(renderBodyEntry).join(''):`<div class="empty">${icon('chart')}<h3>変化を記録しよう</h3><p>体重と、任意で体脂肪率を記録できます。</p></div>`}</section></section><aside class="side-col"><section class="panel"><div class="panel-heading"><h2>ボディメイク計画</h2>${icon('target')}</div>${plan?`<div class="pill">${plan.targetWeight<plan.startWeight?'減量':plan.targetWeight>plan.startWeight?'増量':'体重維持'}プラン</div><div class="stat-line"><span>開始</span><strong>${dateLabel(plan.startDate)}</strong></div><div class="stat-line"><span>目標日</span><strong>${dateLabel(plan.targetDate)}</strong></div><div class="stat-line"><span>計画上のペース</span><strong>${ps.weekly>0?'+':''}${nf(ps.weekly,2)} kg/週</strong></div><div class="stat-line"><span>目標日まで</span><strong>${ps.remainingDays} 日</strong></div><div class="progress-row"><div class="progress-info"><span>目標への進み具合</span><strong>${nf(ps.progress,0)}%</strong></div><div class="progress-track"><div class="progress-fill" style="width:${ps.progress}%"></div></div></div><p class="mini-subtitle" style="margin-top:14px">計画線は開始と目標を結んだ目安です。体重の変化を予測・保証するものではありません。</p>`:'<p class="mini-subtitle">スタートと目標、期間を決めて、実際の記録と見比べられます。</p>'}${btn('edit-plan',plan?'計画・PFC目標を編集':'計画をつくる','edit','full')}${btn('share-plan','計画をシェア','share','full ghost')}</section>${nutritionPanel()}</aside></div>`;}
+function bodyChart(){
+  const plan=state.plan, measurements=state.body.filter(b=>b.date<=today).sort(C.compareBodyMeasurements);
+  if(!measurements.length&&!plan)return `<div class="empty">${icon('chart')}<p>体重を記録すると、ここにグラフが表示されます。</p></div>`;
+  const bounds=plan?[...measurements,{date:plan.startDate,kg:plan.startWeight},{date:plan.targetDate,kg:plan.targetWeight}].sort(C.compareBodyMeasurements):measurements;
+  const first=bounds[0],last=bounds.at(-1),start=measurementPosition(first),span=measurementPosition(last)-start;
+  const weights=bounds.map(b=>b.kg),min=Math.floor(Math.min(...weights)-.5),max=Math.ceil(Math.max(...weights)+.5);
+  const x=point=>52+(span?(measurementPosition(point)-start)/span:0)*550;
+  const y=kg=>210-(kg-min)/(max-min)*170;
+  const axisLabel=point=>first.date===last.date?measurementLabel(point):dateLabel(point.date);
+  const guides=Array.from({length:5},(_,i)=>{
+    const kg=min+(max-min)*i/4;
+    return `<line x1="52" x2="602" y1="${y(kg)}" y2="${y(kg)}" stroke="#e2e2e2" stroke-dasharray="4 5"/><text x="43" y="${y(kg)+4}" text-anchor="end" font-size="12" fill="#686868">${nf(kg)}</text>`;
+  });
+  const showUntimedNote=measurements.some(b=>b.time)&&measurements.some(b=>!b.time);
+  return `<svg class="chart" viewBox="0 0 630 260" role="img" aria-label="測定日時ごとの体重。各測定値は下のからだの記録に掲載しています。">
+    ${guides.join('')}<text x="9" y="21" font-size="11" fill="#686868">kg</text>
+    ${plan?`<path d="M${x({date:plan.startDate})},${y(plan.startWeight)} L${x({date:plan.targetDate})},${y(plan.targetWeight)}" stroke="#777777" stroke-width="2" stroke-dasharray="6 6" fill="none"/>`:''}
+    ${measurements.length?`<path d="M${measurements.map(b=>x(b)+','+y(b.kg)).join(' L')}" fill="none" stroke="#252525" stroke-width="3" stroke-linejoin="round"/>`:''}
+    ${measurements.map(b=>`<circle cx="${x(b)}" cy="${y(b.kg)}" r="4" fill="#252525" stroke="white" stroke-width="2"><title>${measurementLabel(b,true)}${b.time?'':'（時刻未記録）'}・${b.kg}kg</title></circle>`).join('')}
+    <text x="52" y="242" font-size="12" fill="#686868">${axisLabel(first)}</text>
+    ${span?`<text x="602" y="242" text-anchor="end" font-size="12" fill="#686868">${axisLabel(last)}</text>`:''}</svg>
+    ${showUntimedNote?'<p class="small">時刻が未記録の測定は、その日の先頭に表示します。</p>':''}`;
+}
 function renderRecords(){const prs=Object.values(C.records(state)).filter(p=>prGroup==='すべて'||exercise(p.exerciseId).group===prGroup).sort((a,b)=>b.date.localeCompare(a.date));return `<div class="pr-intro"><div><div class="eyebrow">PERSONAL BEST</div><h2>種目別の最高重量</h2><p>補助なしで完了したメインセットを集計します。</p></div>${icon('crown')}</div><div class="between"><h2>自己ベスト <span class="muted" style="font-weight:400;font-size:15px">${Object.keys(C.records(state)).length} 種目</span></h2>${btn('record-info','集計ルール','','ghost')}</div><div class="filter-row">${['すべて',...EXERCISE_GROUPS].map(g=>`<button class="chip ${prGroup===g?'active':''}" data-action="pr-group" data-group="${g}">${g}</button>`).join('')}</div><div class="wide-grid">${prs.map(p=>{const e=exercise(p.exerciseId),u=exerciseUnit(e.id);return `<article class="panel pr-card">${icon('crown')}<span class="pill">${h(e.group)} · ${h(e.equipment)}</span><h3>${h(e.name)}</h3><div class="pr-number">${weight(p.kg,u)}<span>${u} × ${p.reps} 回</span></div><div class="small">${h(shortLoad(e))} · ${dateLabel(p.date,true)}</div><button class="text-button" data-action="edit-record" data-date="${p.date}" data-id="${h(p.id)}">${icon('edit')} 元の記録を訂正する</button></article>`;}).join('')}</div>${!prs.length?`<div class="panel empty">${icon('crown')}<h3>自己ベストはここに並びます</h3><p>ウォームアップ・補助ありを除く、完了したセットの最高重量を集計します。</p>${btn('nav-workout','トレーニングを記録','plus','primary')}</div>`:''}<div class="small" style="margin-top:22px">同じ重量では回数が多いセットを表示。自重種目の0kgは追加重量なしを意味します。異なるマシンはカスタム種目を分けて記録してください。</div>`;}
 function renderHistory(){const start=`${month}-01`,startDow=C.parseDay(start).getDay(),gridStart=C.shiftDay(start,-((startDow+6)%7));const dates=Object.keys(state.workouts).filter(d=>state.workouts[d].exercises.length).sort().reverse();
   const summary=C.monthlySummary(state,month);
@@ -522,7 +576,7 @@ function setEditor(id,date=day,focusField='kg'){
     modal.close();
     commit('記録と自己ベストを更新しました');
   });
-  setTimeout(()=>modal.querySelector(`[name="${focusField}"]`)?.focus(),10);
+  modal.querySelector(`[name="${focusField}"]`)?.focus();
 }
 function exerciseMenu(id){
   const inst=instance(id);
@@ -561,8 +615,35 @@ function updateFoodCalculation(){const form=modal.querySelector('form'),out=moda
   if(portionLabel){const base=foodPortionBase(form);portionLabel.textContent=`1倍の量　${nf(base,2)}${basis==='100g'?' g':'食分'}`;for(const b of form.querySelectorAll('[data-food-ratio]'))b.setAttribute('aria-pressed',String(Math.abs(amount-base*Number(b.dataset.foodRatio))<1e-8));}
   out.textContent=`${fd.has('amount')?'今回の量：':'表示の基準：'}${nf(values.kcal*mult,0)} kcal / P ${nf(values.p*mult)}・F ${nf(values.f*mult)}・C ${nf(values.c*mult)} g（PFC由来 ${nf(C.macroEnergy(values)*mult,0)} kcal）`;}
 function manageFoods(){openDialog('いつもの食事を管理',state.foods.length?state.foods.map(f=>`<div class="routine-option"><div><h3>${h(f.name)}</h3><p>${nf(f.kcal)} kcal / ${f.basis==='100g'?'100g':'1食分'}</p></div><div class="row">${ib('edit-saved-food','食品を編集','edit',`data-id="${h(f.id)}"`)}${ib('delete-saved-food','登録から削除','trash',`data-id="${h(f.id)}"`)}</div></div>`).join(''):'<p>食事を記録するときに登録できます。</p>');}
-function planForm(){const p=state.plan??{startDate:today,targetDate:C.shiftDay(today,84),startWeight:state.body.filter(b=>b.date<=today).sort((a,b)=>b.date.localeCompare(a.date))[0]?.kg??'',targetWeight:'',kcal:0,p:0,f:0,c:0};openDialog('計画と栄養目標',`<p>自分で決めた目標を記録します。開始と目標を結ぶラインで進み具合を確認できます。</p><form><div class="form-grid">${inputField('startWeight','開始体重（kg）',p.startWeight,'type="number" min="10" max="500" step="0.1" required inputmode="decimal"')}${inputField('targetWeight','目標体重（kg）',p.targetWeight,'type="number" min="10" max="500" step="0.1" required inputmode="decimal"')}${inputField('startDate','開始日',p.startDate,'type="date" required')}${inputField('targetDate','目標日',p.targetDate,'type="date" required')}${inputField('kcal','1日のカロリー目標（kcal）',p.kcal||'','type="number" min="0" max="100000" step="1" inputmode="numeric" placeholder="未設定"','full')}</div><div class="form-grid three" style="margin-top:17px">${['p','f','c'].map((k,i)=>inputField(k,['P たんぱく質（g）','F 脂質（g）','C 炭水化物（g）'][i],p[k]||'','type="number" min="0" max="100000" step="any" inputmode="decimal" placeholder="未設定"')).join('')}</div><div class="info-box">カロリー・PFCは空欄または0で未設定。体重は減量・維持・増量のいずれにも使えます。</div>${formEnd('計画を保存',state.plan?btn('delete-plan','計画を削除','trash','danger'):'')}</form>`);bindForm(fd=>{const startDate=fd.get('startDate'),targetDate=fd.get('targetDate');need(C.daysBetween(startDate,targetDate)>0,'目標日は開始日より後にしてください。');const plan={startDate,targetDate,startWeight:number(fd,'startWeight',10,500),targetWeight:number(fd,'targetWeight',10,500)};for(const k of ['kcal','p','f','c'])plan[k]=fd.get(k)===''?0:number(fd,k);state.plan=plan;modal.close();commit('計画と栄養目標を保存しました');});}
-function bodyForm(date=null){const entry=state.body.find(b=>b.date===date);openDialog(entry?'からだの記録を訂正':'からだを記録',`<form><div class="form-grid">${inputField('date','日付',entry?.date??today,'type="date" required','full')}${inputField('kg','体重（kg）',entry?.kg??'','type="number" min="10" max="500" step="0.1" required inputmode="decimal"')}${inputField('bodyFat','体脂肪率（%・任意）',entry?.bodyFat??'','type="number" min="1" max="80" step="0.1" inputmode="decimal"')}</div>${formEnd('記録を保存',entry?btn('delete-body','削除','trash','danger',`data-date="${date}"`):'')}</form>`);bindForm(fd=>{const newDate=fd.get('date');need(!state.body.some(b=>b.date===newDate&&b.date!==date),'その日付には記録があります。該当日の記録から訂正してください。');const record={date:newDate,kg:number(fd,'kg',10,500),bodyFat:fd.get('bodyFat')===''?null:number(fd,'bodyFat',1,80)};state.body=state.body.filter(b=>b.date!==date);state.body.push(record);modal.close();commit('からだの記録を保存しました');});}
+function planForm(){const p=state.plan??{startDate:today,targetDate:C.shiftDay(today,84),startWeight:state.body.filter(C.bodyMeasurementAsOf(today)).sort(C.compareBodyMeasurements).at(-1)?.kg??'',targetWeight:'',kcal:0,p:0,f:0,c:0};openDialog('計画と栄養目標',`<p>自分で決めた目標を記録します。開始と目標を結ぶラインで進み具合を確認できます。</p><form><div class="form-grid">${inputField('startWeight','開始体重（kg）',p.startWeight,'type="number" min="10" max="500" step="0.1" required inputmode="decimal"')}${inputField('targetWeight','目標体重（kg）',p.targetWeight,'type="number" min="10" max="500" step="0.1" required inputmode="decimal"')}${inputField('startDate','開始日',p.startDate,'type="date" required')}${inputField('targetDate','目標日',p.targetDate,'type="date" required')}${inputField('kcal','1日のカロリー目標（kcal）',p.kcal||'','type="number" min="0" max="100000" step="1" inputmode="numeric" placeholder="未設定"','full')}</div><div class="form-grid three" style="margin-top:17px">${['p','f','c'].map((k,i)=>inputField(k,['P たんぱく質（g）','F 脂質（g）','C 炭水化物（g）'][i],p[k]||'','type="number" min="0" max="100000" step="any" inputmode="decimal" placeholder="未設定"')).join('')}</div><div class="info-box">カロリー・PFCは空欄または0で未設定。体重は減量・維持・増量のいずれにも使えます。</div>${formEnd('計画を保存',state.plan?btn('delete-plan','計画を削除','trash','danger'):'')}</form>`);bindForm(fd=>{const startDate=fd.get('startDate'),targetDate=fd.get('targetDate');need(C.daysBetween(startDate,targetDate)>0,'目標日は開始日より後にしてください。');const plan={startDate,targetDate,startWeight:number(fd,'startWeight',10,500),targetWeight:number(fd,'targetWeight',10,500)};for(const k of ['kcal','p','f','c'])plan[k]=fd.get(k)===''?0:number(fd,k);state.plan=plan;modal.close();commit('計画と栄養目標を保存しました');});}
+function bodyIndex(target){
+  return state.body.findIndex(b=>target.id ? b.id===target.id : !b.id&&b.date===target.date);
+}
+function bodyForm(target=null){
+  const entry=target?state.body[bodyIndex(target)]:null;
+  if(target&&!entry)return;
+  const clock=C.localTime();
+  const requireTime=!entry||Boolean(entry.time);
+  openDialog(entry?'からだの記録を訂正':'からだを記録',`<form id="body-form"><div class="form-grid">
+    ${inputField('date','測定日',entry?.date??today,'type="date" required')}
+    ${inputField('time',requireTime?'測定時刻':'測定時刻（任意）',entry?(entry.time??''):clock,'type="time" step="60"'+(requireTime?' required':''))}
+    ${inputField('kg','体重（kg）',entry?.kg??'','type="number" min="10" max="500" step="0.1" required inputmode="decimal"')}
+    ${inputField('bodyFat','体脂肪率（%・任意）',entry?.bodyFat??'','type="number" min="1" max="80" step="0.1" inputmode="decimal"')}
+    </div>${formEnd('記録を保存',entry?btn('delete-body','削除','trash','danger',bodyRecordAttrs(entry)):'')}</form>`);
+  bindForm(fd=>{
+    const time=String(fd.get('time')??'');
+    need((!requireTime&&time==='')||/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time),'測定時刻を入力してください。');
+    const record={id:entry?.id??C.uid(),date:fd.get('date'),kg:number(fd,'kg',10,500),bodyFat:fd.get('bodyFat')===''?null:number(fd,'bodyFat',1,80)};
+    if(time)record.time=time;
+    if(target){
+      const index=bodyIndex(target);
+      need(index>=0,'訂正する記録が見つかりません。');
+      state.body[index]=record;
+    }else state.body.push(record);
+    modal.close();
+    commit('からだの記録を保存しました');
+  });
+}
 function timerSoundRow(){
   return `<label class="settings-row timer-sound-row"><span><strong id="timer-sound-label">タイマーの終了音</strong>
     <small id="timer-sound-help">画面を開いているときに短い音で知らせます。全種目共通です。</small></span>
@@ -1044,8 +1125,12 @@ async function handleAction(d){try{switch(d.action){
   case 'edit-plan':planForm();break;
   case 'delete-plan':undoable(()=>{state.plan=null;},'計画を削除しました');modal.close();break;
   case 'add-body':bodyForm();break;
-  case 'edit-body':bodyForm(d.date);break;
-  case 'delete-body':undoable(()=>{state.body=state.body.filter(b=>b.date!==d.date);},'からだの記録を削除しました');modal.close();break;
+  case 'edit-body':bodyForm(d);break;
+  case 'delete-body':{
+    const index=bodyIndex(d);
+    if(index>=0)undoable(()=>{state.body.splice(index,1);},'からだの記録を削除しました');
+    modal.close();break;
+  }
   case 'pr-group':prGroup=d.group;render();break;
   case 'record-info':openDialog('自己ベストのルール','<p>完了したメインセットのうち、補助なしで1回以上できた最高重量を表示します。同重量なら回数の多いセット、同回数なら新しい日付を優先します。</p><div class="info-box">ウォームアップ・補助あり・未完了セットは集計しません。自重種目は追加重量が同じなら回数の増加でも王冠が出ます。その他の種目は最高重量が増えたときに王冠が出ます。</div><p>「元の記録を訂正する」で修正すると、すべての保存済みセットから再計算します。単位切替・読み込み・訂正だけでは王冠の演出を繰り返しません。</p>');break;
   case 'share':shareDialog();break;
@@ -1082,8 +1167,16 @@ async function handleAction(d){try{switch(d.action){
   case 'undo':if(undoState){if(JSON.stringify({...state,timer:null})!==undoFingerprint){undoState=null;toast('その後の変更があるため、履歴から訂正してください');break;}const timer=state.timer;state=undoState;state.timer=timer;undoState=null;commit('元に戻しました');if(modal.open)modal.close();}break;
 }}catch(err){console.error('REPS NOTE action error',err);toast('操作を完了できませんでした：'+err.message);}}
 const recordChanges=new Set(['set-weight','set-reps','cardio-minutes','setting-unit','setting-step','setting-auto','setting-timer','setting-timer-sound']);
+const directEntryFields=new Map([['set-weight','kg'],['set-reps','reps'],['cardio-minutes','minutes']]);
 document.addEventListener('change',event=>{
   const el=event.target;
+  if(el.value==='custom' && directEntryFields.has(el.dataset.change)){
+    // Opening the editor in the selection gesture lets mobile browsers show the keypad.
+    // The form still takes the record lock when the user saves.
+    const selected=Array.from(el.options).find(option=>option.defaultSelected);
+    if(selected)el.value=selected.value;
+    return setEditor(el.dataset.id,day,directEntryFields.get(el.dataset.change));
+  }
   if(el.dataset.change==='setting-timer-sound'){
     if(el.checked){
       void timerSound.arm().then(ready=>{
@@ -1103,14 +1196,12 @@ function handleChange(el){const d=el.dataset;try{
   if(d.change==='cardio-minutes'){
     const set=setById(d.id);
     if(!set || !Object.hasOwn(set,'minutes'))return;
-    if(el.value==='custom'){el.value=String(set.minutes);setEditor(d.id,day,'minutes');return;}
     const minutes=Number(el.value);
     if(!C.validCardioValue(C.CARDIO_FIELDS[0],minutes)){el.value=String(set.minutes);toast('時間を正しく入力してください');return;}
     set.minutes=minutes;
     if(commit())focusSet(d.id,'cardio-minutes');
   }
   if(d.change==='set-weight'){
-    if(el.value==='custom'){render();setEditor(d.id,day,'kg');return;}
     const set=setById(d.id);
     if(!set)return;
     const displayUnit=exerciseUnit(d.exercise);
@@ -1124,7 +1215,7 @@ function handleChange(el){const d=el.dataset;try{
     C.setExerciseUnit(state,d.exercise,displayUnit);
     if(commit())focusSet(d.id);
   }
-  if(d.change==='set-reps'){if(el.value==='custom'){render();setEditor(d.id,day,'reps');}else{const s=setById(d.id);if(s){s.reps=Number(el.value);if(commit())focusSet(d.id,'set-reps');}}}
+  if(d.change==='set-reps'){const s=setById(d.id);if(s){s.reps=Number(el.value);if(commit())focusSet(d.id,'set-reps');}}
   if(d.change==='setting-unit'){state.settings.unit=el.value;save();render();settingsDialog();}
   if(d.change==='setting-step'){state.settings.weightStep=Number(el.value);save();render();}
   if(d.change==='setting-auto'){state.settings.autoTimer=el.checked;save();}
