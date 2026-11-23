@@ -167,6 +167,21 @@ export function workoutStats(w) {
   const volume = done.reduce((sum, set) => Object.hasOwn(set, 'minutes') ? sum : sum + set.kg * set.reps, 0);
   return {sets:done.length, total:rows.length, volume, exercises:exercises.length};
 }
+export function completedCardioStats(workout) {
+  let sessions = 0, minutes = 0, distanceKm = 0, distanceCount = 0;
+  for (const exercise of workout.exercises) {
+    for (const set of exercise.sets) {
+      if (!set.completed || !(set.minutes > 0)) continue;
+      sessions++;
+      minutes += set.minutes;
+      if (set.distanceKm != null) {
+        distanceKm += set.distanceKm;
+        distanceCount++;
+      }
+    }
+  }
+  return {sessions, minutes, distanceKm:distanceCount ? distanceKm : null, distanceCount};
+}
 export function lastExercise(state,id,before) {
   const dates=Object.keys(state.workouts).filter(d=>d<before).sort().reverse();
   for (const date of dates) {
@@ -198,14 +213,9 @@ export function monthlySummary(state, month) {
     trainingDays++;
     completed += stats.sets;
     volumeKg += stats.volume;
-    for (const exercise of workout.exercises) {
-      for (const set of exercise.sets) {
-        if (set.completed && set.minutes > 0) {
-          cardioSessions++;
-          cardioMinutes += set.minutes;
-        }
-      }
-    }
+    const cardio = completedCardioStats(workout);
+    cardioSessions += cardio.sessions;
+    cardioMinutes += cardio.minutes;
   }
   const meals = Object.entries(state.meals).filter(([date, entries]) => inMonth(date) && entries.length);
   const kcal = meals.reduce((total, [, entries]) => total + mealTotals(entries).kcal, 0);

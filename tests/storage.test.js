@@ -28,7 +28,7 @@ async function openApp(t, original=JSON.stringify(blankState())){
   const globals={
     CSS:{escape:value=>String(value)},
     localStorage:storage, document:{querySelector:key=>dom[key],addEventListener:(key,fn)=>{events[key]=fn;}},
-    window:{addEventListener:(key,fn)=>{windowEvents[key]=fn;}},
+    window:{scrollTo(){},addEventListener:(key,fn)=>{windowEvents[key]=fn;}},
     navigator:{locks:{request:async (key,fn)=>{assert.match(key,/^repnote:v1:(real|demo)$/);return fn();}}}
   };
   for(const [key,value] of Object.entries(globals)){
@@ -48,6 +48,46 @@ async function openApp(t, original=JSON.stringify(blankState())){
   }
   return {app,modal,toast,click,storage,values,events,windowEvents,importText,tick,read:()=>JSON.parse(values.get(dataKey))};
 }
+
+test('history summarizes completed cardio time and recorded distances separately from lifting volume', async t=>{
+  const state=blankState();
+  state.settings.unit='lbs';
+  const today=localDate();
+  const cardio=(minutes,distanceKm,completed=true)=>({id:crypto.randomUUID(),minutes,distanceKm,completed});
+  const entry=(exerciseId,...sets)=>({id:crypto.randomUUID(),exerciseId,sets});
+  const strength={...newSet(10,5),completed:true};
+  const log=(offset,...exercises)=>{
+    const date=shiftDay(today,offset);
+    state.workouts[date]={title:'記録',note:'',exercises};
+    return date;
+  };
+  const running=log(0,entry('cardio-running',cardio(20.25,2.55),cardio(90,10,false)),
+    entry('cardio-walking',cardio(10,1.05)),entry('barbell-bench',newSet(5,8)));
+  const noDistance=log(-1,entry('cardio-running',cardio(12,undefined)));
+  const zeroDistance=log(-2,entry('cardio-treadmill',cardio(8,0)));
+  const mixed=log(-3,entry('barbell-bench',strength),entry('cardio-running',cardio(15,2),cardio(5,null)));
+  const lifting=log(-4,entry('barbell-bench',{...strength,id:'lift-only'}),entry('cardio-running',cardio(5,1,false)));
+  const drafts=log(-5,entry('cardio-running',cardio(20,3,false)));
+  const ui=await openApp(t,JSON.stringify(state));
+  await ui.click('nav',{view:'history'});
+  const row=date=>ui.app.innerHTML.split(`class="history-item" data-action="history-date" data-date="${date}">`)[1].split('</button>')[0];
+  assert.match(row(running),/30\.25\s*分/);
+  assert.match(row(running),/3\.6\s*km/);
+  assert.doesNotMatch(row(running),/セット|lbs|kg/);
+  assert.match(row(noDistance),/12\s*分/);
+  assert.doesNotMatch(row(noDistance),/km|lbs/);
+  assert.match(row(zeroDistance),/0\s*km/);
+  assert.match(row(mixed),/1セット完了/);
+  assert.match(row(mixed),/110 lbs/);
+  assert.match(row(mixed),/20\s*分/);
+  assert.match(row(mixed),/2\s*km/);
+  assert.match(row(mixed),/記録分/);
+  assert.match(row(lifting),/1セット完了/);
+  assert.match(row(lifting),/110 lbs/);
+  assert.doesNotMatch(row(lifting),/5分|1 km/);
+  assert.match(row(drafts),/未完了/);
+  assert.doesNotMatch(row(drafts),/20\s*分|3\s*km|lbs|セット/);
+});
 
 test('sharing a plan keeps edited or empty post text through image changes, copying and native sharing', async t=>{
   const state=blankState(), day=localDate();
