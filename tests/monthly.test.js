@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {blankState, cloneSet, EPS, monthlySummary, newCardioSet, newSet, recordUpdateCount} from '../dist/core.js';
 
 const done = (kg, reps, extra={}) => ({...newSet(kg,reps), completed:true, ...extra});
-const run = minutes => ({...newCardioSet(), minutes, kcal:600, completed:true});
+const run = (minutes, distanceKm=null) => ({...newCardioSet(), minutes, distanceKm, kcal:600, completed:true});
 const exercise = (exerciseId, ...sets) => ({exerciseId, sets});
 const workout = (...exercises) => ({exercises});
 const food = (kcal, amount=1, basis='serving') => ({kcal, p:0, f:0, c:0, basis, amount});
@@ -28,16 +28,36 @@ test('monthly summary includes only completed activities and distinguishes missi
   ];
   assert.deepEqual(monthlySummary(state,'2027-01'),{
     month:'2027-01',trainingDays:2,strengthSets:2,volumeKg:500,updatedExercises:1,
-    cardioSessions:2,cardioMinutes:39.5,mealDays:2,avgKcal:300,
+    cardioSessions:2,cardioMinutes:39.5,cardioDistanceKm:null,cardioDistanceCount:0,mealDays:2,avgKcal:300,
     bodyDays:2,bodyMeasurements:2,firstWeightKg:71.2,lastWeightKg:69.3,
   });
   assert.deepEqual(monthlySummary(state,'2027-03'),{
     month:'2027-03',trainingDays:0,strengthSets:0,volumeKg:0,updatedExercises:0,
-    cardioSessions:0,cardioMinutes:0,mealDays:0,avgKcal:null,
+    cardioSessions:0,cardioMinutes:0,cardioDistanceKm:null,cardioDistanceCount:0,mealDays:0,avgKcal:null,
     bodyDays:0,bodyMeasurements:0,firstWeightKg:null,lastWeightKg:null,
   });
   state.meals['2027-03-01'] = [food(0)];
   assert.equal(monthlySummary(state,'2027-03').avgKcal,0);
+});
+
+test('monthly cardio totals follow completed sessions across days and distinguish a missing distance from zero', () => {
+  const state = blankState();
+  const ride = run(30,8.75);
+  state.workouts = {
+    '2026-12-31':workout(exercise('cardio-running',run(60,11))),
+    '2027-01-01':workout(exercise('cardio-running',run(12.5,1.25),cloneSet(run(25,4))),
+      exercise('cardio-walking',run(6))),
+    '2027-01-31':workout(exercise('cardio-cycling',ride),exercise('barbell-bench',done(40,8))),
+    '2027-02-01':workout(exercise('cardio-walking',run(15,0))),
+  };
+  function totals(month) {
+    const {cardioMinutes,cardioSessions,cardioDistanceKm,cardioDistanceCount} = monthlySummary(state,month);
+    return [cardioMinutes,cardioSessions,cardioDistanceKm,cardioDistanceCount];
+  }
+  assert.deepEqual(totals('2027-01'),[48.5,3,10,2]);
+  assert.deepEqual(totals('2027-02'),[15,1,0,1]);
+  ride.completed = false;
+  assert.deepEqual(totals('2027-01'),[18.5,2,1.25,1]);
 });
 
 test('monthly updates count each improved exercise once and recompute after a historical correction', () => {

@@ -4,12 +4,13 @@ import { drawMonthlySummary, monthlyShareReport } from '../dist/month-share.js';
 
 const empty = {
   month:'2026-11', trainingDays:0, strengthSets:0, volumeKg:0, updatedExercises:0,
-  cardioSessions:0, cardioMinutes:0, mealDays:0, avgKcal:null,
+  cardioSessions:0, cardioMinutes:0, cardioDistanceKm:null, cardioDistanceCount:0, mealDays:0, avgKcal:null,
   bodyDays:0, firstWeightKg:null, lastWeightKg:null,
 };
 const mixed = {
   ...empty, trainingDays:6, strengthSets:31, volumeKg:45.359237, updatedExercises:2,
-  cardioSessions:7, cardioMinutes:122.75, mealDays:3, avgKcal:1450.25,
+  cardioSessions:7, cardioMinutes:122.75, cardioDistanceKm:12.35, cardioDistanceCount:3,
+  mealDays:3, avgKcal:1450.25,
   bodyDays:2, firstWeightKg:70.25, lastWeightKg:69.5,
 };
 
@@ -18,7 +19,8 @@ test('monthly text uses the selected month, unit and recorded-day averages', () 
   assert.equal(report.dateLabel,'2026年11月');
   assert.deepEqual(report.textLines, [
     '2026年11月の月間まとめ','トレーニング日数 6日','筋トレ完了セット 31セット','自己ベスト更新 2種目',
-    '総ボリューム 100 lbs','有酸素 7回 / 計122.75分','食事の記録日数 3日','記録日平均の摂取カロリー 1,450 kcal',
+    '総ボリューム 100 lbs','有酸素 7回 / 計122.75分','有酸素の合計距離 12.35 km（記録分）',
+    '食事の記録日数 3日','記録日平均の摂取カロリー 1,450 kcal',
     '体重（初回 → 最終） 70.25 → 69.5 kg',
   ]);
   const hidden = monthlyShareReport(mixed, 'lbs', false, false);
@@ -27,6 +29,19 @@ test('monthly text uses the selected month, unit and recorded-day averages', () 
   assert.doesNotMatch(JSON.stringify(hidden),/2026|11月|総ボリューム|\bkg\b|\blbs\b|70\.25|69\.5/);
   assert.ok(hidden.textLines.includes('体重の記録日数 2日'));
   assert.ok(hidden.textLines.includes('自己ベスト更新 2種目'));
+  assert.ok(hidden.textLines.includes('有酸素の合計距離 12.35 km（記録分）'));
+});
+
+test('monthly shares omit an unrecorded distance, keep an explicit zero and show a fully recorded distance', () => {
+  for (const distance of [null,0,4.25]) {
+    const summary = {...empty,trainingDays:1,cardioSessions:2,cardioMinutes:30.5,
+      cardioDistanceKm:distance,cardioDistanceCount:distance===null ? 0 : 2};
+    const {rows,textLines} = monthlyShareReport(summary,'lbs',false,true);
+    const expected = [{label:'有酸素',value:'2回 / 計30.5分'}];
+    if (distance !== null) expected.push({label:'有酸素の合計距離',value:distance+' km'});
+    assert.deepEqual(rows,expected);
+    assert.deepEqual(textLines.filter(line=>line.startsWith('有酸素')),expected.map(row=>row.label+' '+row.value));
+  }
 });
 
 test('distinguishes a missing log from a recorded zero and a single weigh-in', () => {

@@ -206,6 +206,7 @@ export function monthlySummary(state, month) {
   const inMonth = date => date.startsWith(month+'-');
   const workoutDates = Object.keys(state.workouts).filter(inMonth).sort();
   let trainingDays = 0, completed = 0, volumeKg = 0, cardioSessions = 0, cardioMinutes = 0;
+  let cardioDistanceKm = 0, cardioDistanceCount = 0;
   for (const day of workoutDates) {
     const workout = state.workouts[day];
     const stats = workoutStats(workout);
@@ -216,6 +217,8 @@ export function monthlySummary(state, month) {
     const cardio = completedCardioStats(workout);
     cardioSessions += cardio.sessions;
     cardioMinutes += cardio.minutes;
+    cardioDistanceKm += cardio.distanceKm ?? 0;
+    cardioDistanceCount += cardio.distanceCount;
   }
   const meals = Object.entries(state.meals).filter(([date, entries]) => inMonth(date) && entries.length);
   const kcal = meals.reduce((total, [, entries]) => total + mealTotals(entries).kcal, 0);
@@ -223,6 +226,7 @@ export function monthlySummary(state, month) {
   return {
     month, trainingDays, strengthSets:completed-cardioSessions, volumeKg,
     updatedExercises:countRecordUpdates(state, workoutDates), cardioSessions, cardioMinutes,
+    cardioDistanceKm:cardioDistanceCount ? cardioDistanceKm : null, cardioDistanceCount,
     mealDays:meals.length, avgKcal:meals.length ? kcal / meals.length : null,
     bodyDays:new Set(body.map(entry => entry.date)).size, bodyMeasurements:body.length,
     firstWeightKg:body[0]?.kg ?? null, lastWeightKg:body.at(-1)?.kg ?? null,

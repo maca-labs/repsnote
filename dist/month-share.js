@@ -1,5 +1,16 @@
 import { fmt, fromKg } from './core.js';
 
+export function monthlyCardioRows(summary) {
+  if (!summary.cardioSessions) return [];
+  const time = `${fmt(summary.cardioSessions, 0)}回 / 計${fmt(summary.cardioMinutes, 2)}分`;
+  const rows = [{label:'有酸素', value:time}];
+  if (summary.cardioDistanceKm != null) {
+    const partial = summary.cardioDistanceCount < summary.cardioSessions ? '（記録分）' : '';
+    rows.push({label:'有酸素の合計距離', value:`${fmt(summary.cardioDistanceKm, 2)} km${partial}`});
+  }
+  return rows;
+}
+
 export function monthlyShareReport(summary, unit, showWeights, showDate) {
   const [year, month] = summary.month.split('-');
   const title = '月間まとめ';
@@ -13,9 +24,7 @@ export function monthlyShareReport(summary, unit, showWeights, showDate) {
   if (showWeights && summary.strengthSets > 0) {
     rows.push({label:'総ボリューム', value:`${fmt(fromKg(summary.volumeKg, unit), 2)} ${unit}`});
   }
-  if (summary.cardioSessions > 0) {
-    rows.push({label:'有酸素', value:`${fmt(summary.cardioSessions, 0)}回 / 計${fmt(summary.cardioMinutes, 2)}分`});
-  }
+  rows.push(...monthlyCardioRows(summary));
   if (summary.mealDays > 0) {
     rows.push({label:'食事の記録日数', value:`${summary.mealDays}日`});
     rows.push({label:'記録日平均の摂取カロリー', value:`${fmt(summary.avgKcal, 0)} kcal`});
