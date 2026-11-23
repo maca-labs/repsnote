@@ -11,18 +11,35 @@ export function openMealImport({day,modal,openDialog,bindForm,h,toast,onSave,dra
   let menu = draft?.menu ?? '', response = draft?.response ?? '', group = draft?.group ?? '昼食';
   let previousReview = draft?.previousReview ?? [];
   let photo, previewUrl, currentForm;
+  const lifetime = new AbortController();
   function persist(stage) {
-    if (mode === 'photo') onDraftChange({mode,menu,response,group,stage,previousReview});
+    if (!lifetime.signal.aborted && mode === 'photo') onDraftChange({mode,menu,response,group,stage,previousReview});
   }
   function releasePreview() {
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     previewUrl = null;
   }
-  modal.addEventListener('close', () => {
+  function dispose() {
+    lifetime.abort();
     releasePreview();
     photo = null;
-    if (!modal.open && modal.contains(currentForm) && mode === 'photo') onDraftChange(null);
-  }, {once:true});
+    if (modal.contains(currentForm) && mode === 'photo') onDraftChange(null);
+  }
+  const listeners = {signal:lifetime.signal};
+  // Clear on dismissal itself: a user can reload before the queued close event arrives.
+  modal.addEventListener('beforetoggle', event => {
+    if (event.newState === 'closed' && modal.contains(currentForm)) dispose();
+  }, listeners);
+  // Older dialogs do not dispatch beforetoggle. The app's backdrop handler closes on click.
+  modal.addEventListener('click', event => {
+    if (modal.contains(currentForm) && (!modal.open || event.target.closest('[data-action="close"]'))) dispose();
+  }, listeners);
+  modal.addEventListener('cancel', event => {
+    if (modal.contains(currentForm) && !event.defaultPrevented) dispose();
+  }, listeners);
+  modal.addEventListener('close', () => {
+    if (!modal.open || !modal.contains(currentForm)) dispose();
+  }, listeners);
   const cancel = '<button type="button" class="button" data-action="close">キャンセル</button>';
   const errorArea = '<div id="form-error" class="form-error" role="alert"></div>';
   const mealOptions = choice => mealGroups.map(meal =>

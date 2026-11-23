@@ -7,6 +7,24 @@ async function startPersonalLog(page) {
   await expect(page.locator('.demo-banner')).toHaveCount(0);
 }
 
+test('closing a photo import discards its return draft before an immediate reload', async ({page})=>{
+  await startPersonalLog(page);
+  await page.locator('[data-action="nav"][data-view="food"]:visible').first().click();
+  await page.locator('[data-action="meal-import"]').click();
+  await page.locator('[data-meal-mode="photo"]').click();
+  await page.locator('#meal-query').fill('閉じたら消す下書き');
+  const beforeAndAfter = await page.evaluate(()=>{
+    const key='repnote:meal-photo-draft:real';
+    const before=sessionStorage.getItem(key);
+    // A browser reload can begin before the native dialog dispatches its queued close event.
+    document.querySelector('#modal [data-action="close"]').click();
+    return [Boolean(before), sessionStorage.getItem(key)];
+  });
+  expect(beforeAndAfter).toEqual([true,null]);
+  await page.reload();
+  await expect(page.locator('#modal')).toBeHidden();
+});
+
 test('a storage refresh keeps the saved note and the other tab’s unsaved draft', async ({ page: a, context }) => {
   await startPersonalLog(a);
   const noteA = a.getByRole('textbox', { name: 'トレーニングメモ' });

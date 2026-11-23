@@ -1,4 +1,10 @@
 import {expect, test} from '@playwright/test';
+import {once} from 'node:events';
+import http from 'node:http';
+
+// These tests exercise session storage, file selection and the return form. PWA caching
+// and version changes have their own browser tests in pwa-release.spec.mjs.
+test.use({serviceWorkers:'block'});
 
 const food = page => page.locator('[data-action="nav"][data-view="food"]:visible').first().click();
 const response = JSON.stringify({items:[
@@ -27,7 +33,7 @@ async function choosePhoto(page, buttonName='写真を選ぶ') {
   });
   const buffer = Buffer.from(png,'base64');
   const [picker] = await Promise.all([
-    page.waitForEvent('filechooser'),
+    page.waitForEvent('filechooser',{timeout:7000}),
     page.getByRole('button',{name:buttonName,exact:true}).click(),
   ]);
   await picker.setFiles({name:'test-meal.png',mimeType:'image/png',buffer});
@@ -62,7 +68,7 @@ test('a selected photo is shared on request, then the reviewed result is saved o
   await page.locator('#meal-scale-0').selectOption('0.5');
   await page.locator('[name="include-1"]').uncheck();
   await expect(page.locator('#meal-import-total')).toContainText('160 kcal');
-  await page.reload();
+  await page.reload({waitUntil:'commit'});
   await expect(page.locator('#meal-import-review')).toBeVisible();
   await expect(page.locator('#modal')).toContainText(date);
   await expect(page.locator('#meal-type-0')).toHaveValue('夕食');
@@ -71,7 +77,7 @@ test('a selected photo is shared on request, then the reviewed result is saved o
   await expect(page.locator('.food-item')).toHaveCount(0);
   await page.getByRole('button',{name:'選んだ食事を一括保存'}).click();
   await expect(page.locator('#modal')).toBeHidden();
-  await page.reload();
+  await page.reload({waitUntil:'commit'});
   await food(page);
   await expect(page.locator('#modal')).toBeHidden();
   await expect(page.locator('.food-item')).toHaveCount(0);
@@ -92,8 +98,6 @@ test('manual handoff preserves the return form through an AI tab and reload with
       }},
     });
   },response);
-  // Exercise the link and return without contacting the external service.
-  await context.route('https://chatgpt.com/**',route=>route.fulfill({contentType:'text/html',body:'<title>AI test page</title>'}));
   await openPhotoImport(page);
   await expect(page.locator('#meal-photo-camera')).toHaveAttribute('capture','environment');
   const png = await choosePhoto(page);
@@ -107,13 +111,34 @@ test('manual handoff preserves the return form through an AI tab and reload with
   const prompt = await page.evaluate(()=>window.copiedMealPrompt);
   expect(prompt).toContain('サラダもあります');
   expect(prompt).toContain('写真');
-  const [ai] = await Promise.all([
-    context.waitForEvent('page'),
-    page.locator('#modal a[href^="https://chatgpt.com"]').click(),
-  ]);
-  await expect(ai).toHaveTitle('AI test page');
-  await ai.close();
-  await page.reload();
+  await test.step('open the external AI link and return to REPS NOTE',async ()=>{
+    const link = page.getByRole('link',{name:'ChatGPTを開く'});
+    await expect(link).toHaveAttribute('href','https://chatgpt.com/');
+    await expect(link).toHaveAttribute('target','_blank');
+    // A separate local origin exercises a real popup navigation, without contacting the AI
+    // service or intercepting the popup's first request before Chromium has attached to it.
+    const aiServer = http.createServer((_,res)=>{
+      res.writeHead(200,{'Content-Type':'text/html; charset=utf-8'}).end('<title>AI test page</title>');
+    });
+    aiServer.listen(0,'127.0.0.1');
+    await once(aiServer,'listening');
+    try {
+      const destination = `http://127.0.0.1:${aiServer.address().port}/`;
+      await link.evaluate((el,url)=>{el.href=url;},destination);
+      const [ai] = await Promise.all([
+        context.waitForEvent('page',{timeout:7000}),
+        link.click(),
+      ]);
+      await expect(ai).toHaveTitle('AI test page');
+      await ai.close();
+    } finally {
+      await new Promise(resolve=>{
+        aiServer.close(resolve);
+        aiServer.closeAllConnections();
+      });
+    }
+  });
+  await page.reload({waitUntil:'commit'});
   await expect(page.locator('#meal-query')).toHaveValue('サラダもあります');
   await expect(page.locator('#meal-group')).toHaveValue('朝食');
   expect(await page.locator('#meal-photo-file').evaluate(input=>input.files.length)).toBe(0);
@@ -123,14 +148,16 @@ test('manual handoff preserves the return form through an AI tab and reload with
   expect(stored).not.toContain('blob:');
   await page.locator('[data-meal-paste]').click();
   await expect(page.locator('#meal-response')).toHaveValue(response);
-  await page.reload();
+  await page.reload({waitUntil:'commit'});
   await expect(page.locator('#meal-response')).toHaveValue(response);
   await page.getByRole('button',{name:'読み込んで確認'}).click();
   await expect(page.locator('#meal-type-0')).toHaveValue('朝食');
   await expect(page.locator('[data-meal-row]')).toHaveCount(2);
   await page.locator('#modal').getByRole('button',{name:'閉じる'}).click();
-  await page.reload();
-  await food(page);
+  await page.reload({waitUntil:'commit'});
+  // A stale draft would reopen here and intercept the navigation to the food screen.
+  await expect(page.locator('.topbar')).toBeVisible();
   await expect(page.locator('#modal')).toBeHidden();
+  await food(page);
   await expect(page.locator('.food-item')).toHaveCount(0);
 });
