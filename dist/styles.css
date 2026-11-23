@@ -3042,3 +3042,9 @@ dialog:has(#exercise-timer) { width: 420px; }
 .signed-number { display: flex; gap: 4px; align-items: center; margin-top: auto; }
 .signed-number input { width: 0; flex: 1; min-width: 0; }
 .signed-number .icon-button { height: 44px; width: 44px; border: 1px solid var(--line); font-size: 20px; }
+
+.share-templates { margin: 12px 0; border: 1px solid var(--line); border-radius: 8px; }
+.share-templates summary { padding: 12px 14px; font-weight: 650; cursor: pointer; }
+#share-template-fields { display: grid; gap: 10px; padding: 0 14px 14px; }
+#share-template-fields .form-error:empty { display: none; }
+.template-actions { display: flex; flex-wrap: wrap; gap: 6px; }

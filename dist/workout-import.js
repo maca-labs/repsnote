@@ -2,6 +2,24 @@ import { CARDIO_FIELDS, localDate, parseDay, toKg, uid, validCardioValue } from 
 
 export const WORKOUT_IMPORT_BYTES = 16 * 1024 * 1024;
 const maxSets = 100000;
+const plainSetId = /^[a-zA-Z0-9_.:-]{1,100}$/;
+
+export function workoutCsvSetId(set) {
+  const id = set.memoImport?.id === set.id ? (set.memoImport?.sourceId ?? set.id) : set.id;
+  if (!id) return '';
+  return plainSetId.test(id) ? id : '~'+JSON.stringify(id);
+}
+
+function readSetId(value, line) {
+  if (!value || plainSetId.test(value)) return value;
+  if (value.startsWith('~')) {
+    // JSON preserves all backup IDs, including whitespace, quotes and line breaks.
+    let id;
+    try { id = JSON.parse(value.slice(1)); } catch { /* Report the CSV line below. */ }
+    if (typeof id === 'string' && id.length <= 100 && id.trim()) return id;
+  }
+  fail(line,'セットIDの形式を確認してください。');
+}
 
 export function decodeWorkoutFile(buffer) {
   const bytes = new Uint8Array(buffer);
@@ -65,6 +83,7 @@ const headings = {
   distanceKm:['距離(km)','距離','distance(km)','distance km'], inclinePct:['傾斜(%)','傾斜','incline(%)'],
   speedKmh:['速度(km/h)','速度','speed(km/h)'], kcal:['消費カロリー(kcal)','消費カロリー','kcal'],
   steps:['歩数','steps'], ordinal:['セット番号','set number','set no'], loadLabel:['重量の意味'],
+  setId:['REPS NOTE セットID'],
 };
 const headerKey = value => normalize(value).replace(/[\s_]+/g,'');
 const lookup = new Map(Object.entries(headings).flatMap(([key, names]) => names.map(name => [headerKey(name),key])));
@@ -164,7 +183,7 @@ export function parseWorkoutImport(input) {
   const native = keys.includes('loadLabel') && keys.includes('kg') && keys.includes('lbs');
   const unquoteExport = value => native ? value.replace(/^'(?=[=+@-])/,'') : value;
   const ignoredColumns = columns.filter((_, index) => !keys[index]);
-  const rows = [], sources = new Map();
+  const rows = [], sources = new Map(), setIds = new Set();
   for (const {line, fields} of table.slice(1)) {
     if (fields.length !== keys.length) fail(line,'項目数が見出しと異なります。');
     const data = Object.fromEntries(known.map(key => [key, fields[keys.indexOf(key)].trim()]));
@@ -176,11 +195,17 @@ export function parseWorkoutImport(input) {
     const parsed = parseSet(data,line);
     const count = data.count ? readNumber(data.count,'セット数',line) : 1;
     if (!Number.isInteger(count) || count < 1 || count > 50000 || rows.length + count > maxSets) fail(line,'セット数を確認してください（一度に10万件まで）。');
+    const setId = readSetId(unquoteExport(data.setId ?? ''),line);
+    if (setId) {
+      if (count !== 1) fail(line,'セットIDは1セットにつき1つ指定してください。');
+      if (setIds.has(setId)) fail(line,'CSV内のセットIDが重複しています。');
+      setIds.add(setId);
+    }
     const source = sources.get(name) ?? {name,type:parsed.type,count:0};
     if (source.type !== parsed.type) fail(line,'同名の種目に筋トレと有酸素が混在しています。種目名を分けてください。');
     source.count += count;
     sources.set(name,source);
-    for (let i = 0; i < count; i++) rows.push({line,date,name,menu,...parsed});
+    for (let i = 0; i < count; i++) rows.push({line,date,name,menu,setId,...parsed});
   }
   if (!rows.length) throw new Error('取り込むセットがありません。');
   return {rows,sources:[...sources.values()],ignoredColumns};
@@ -194,7 +219,7 @@ function setSignature(set) {
 export function mergeWorkoutImport(state, parsed, mapping, catalog) {
   const exercises = new Map(catalog.map(ex => [ex.id,ex]));
   const groups = new Map();
-  let skipped = 0, duplicates = 0, added = 0;
+  let skipped = 0, duplicates = 0, added = 0, linked = 0;
   for (const row of parsed.rows) {
     if (!mapping.has(row.name)) fail(row.line, `「${row.name}」の取り込み先を選んでください。`);
     const id = mapping.get(row.name);
@@ -208,6 +233,17 @@ export function mergeWorkoutImport(state, parsed, mapping, catalog) {
   }
   // Work on a separate state. A rejected row, failed validation or cancelled preview cannot alter the journal.
   const next = structuredClone(state);
+  const owners = new Map();
+  for (const [date,workout] of Object.entries(next.workouts)) {
+    for (const entry of workout.exercises) {
+      owners.set(entry.id,null);
+      for (const set of entry.sets) {
+        const owner = {date,exerciseId:entry.exerciseId};
+        owners.set(set.id,owner);
+        if (set.memoImport?.id === set.id && set.memoImport.sourceId) owners.set(set.memoImport.sourceId,owner);
+      }
+    }
+  }
   for (const {id,date,menu,rows} of groups.values()) {
     const workout = next.workouts[date] ??= {title:menu || 'WORKOUT',note:'',exercises:[]};
     const matching = workout.exercises.filter(entry => entry.exerciseId === id);
@@ -218,37 +254,64 @@ export function mergeWorkoutImport(state, parsed, mapping, catalog) {
       const key = JSON.stringify([row.name,signature]);
       const n = (occurrence.get(key) ?? 0) + 1;
       occurrence.set(key,n);
-      return {set:row.set,signature,receipt:JSON.stringify([row.name,signature,n])};
+      return {...row,signature,receipt:JSON.stringify([row.name,signature,n])};
     });
-    const expected = new Set(incoming.map(item => item.receipt));
-    const imported = new Set(), existing = new Map();
+    const expected = new Set(incoming.filter(item => !item.setId).map(item => item.receipt));
+    const identified = new Set(incoming.map(item => item.setId).filter(Boolean));
+    const imported = new Set(), existing = new Map(), unmatched = [];
     for (const entry of matching) {
       for (const set of entry.sets) {
         // Copied drafts have a new id; only the original row owns its receipt.
-        const prior = set.memoImport;
-        if (prior?.id === set.id && expected.has(prior.receipt)) imported.add(prior.receipt);
-        else {
-          const signature = setSignature(set);
-          existing.set(signature,(existing.get(signature) ?? 0) + 1);
-        }
+        const prior = set.memoImport?.id === set.id ? set.memoImport : null;
+        if (identified.has(set.id) || identified.has(prior?.sourceId)) continue;
+        if (prior && expected.has(prior.receipt) && !imported.has(prior.receipt)) imported.add(prior.receipt);
+        else unmatched.push(set);
       }
     }
-    for (const {set,signature,receipt} of incoming) {
-      if (imported.has(receipt)) { duplicates++; continue; }
-      const available = existing.get(signature) ?? 0;
-      if (available) {
-        existing.set(signature,available-1);
+    // Reserve original receipts first. A set can satisfy only one CSV row in this import.
+    for (const set of unmatched) {
+      const aliases = set.memoImport?.id === set.id ? set.memoImport.additionalReceipts : null;
+      const receipt = aliases?.find(value => expected.has(value) && !imported.has(value));
+      if (receipt) {
+        imported.add(receipt);
+        continue;
+      }
+      const signature = setSignature(set);
+      if (!existing.has(signature)) existing.set(signature,[]);
+      existing.get(signature).push(set);
+    }
+    for (const {set,setId,signature,receipt,line} of incoming) {
+      if (setId && owners.has(setId)) {
+        const owner = owners.get(setId);
+        if (owner?.date !== date || owner.exerciseId !== id) fail(line,'同じセットIDが別の日付または別の種目で使われています。取り込み先を確認してください。');
         duplicates++;
         continue;
+      }
+      if (!setId) {
+        if (imported.has(receipt)) { duplicates++; continue; }
+        const match = existing.get(signature)?.pop();
+        if (match) {
+          if (match.memoImport?.id !== match.id) {
+            match.memoImport = {id:match.id,receipt};
+            linked++;
+          } else if (match.memoImport.receipt !== receipt && !match.memoImport.additionalReceipts?.includes(receipt)) {
+            (match.memoImport.additionalReceipts ??= []).push(receipt);
+            linked++;
+          }
+          duplicates++;
+          continue;
+        }
       }
       if (!destination) {
         destination = {id:uid(),exerciseId:id,note:'',sets:[]};
         workout.exercises.push(destination);
       }
-      const setId = uid();
-      destination.sets.push({...set,id:setId,memoImport:{id:setId,receipt}});
+      const recordId = setId && plainSetId.test(setId) ? setId : uid();
+      const memoImport = {id:recordId,receipt};
+      if (setId && setId !== recordId) memoImport.sourceId = setId;
+      destination.sets.push({...set,id:recordId,memoImport});
       added++;
     }
   }
-  return {state:next,added,duplicates,skipped};
+  return {state:next,added,duplicates,skipped,linked};
 }

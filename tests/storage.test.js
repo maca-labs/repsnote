@@ -49,6 +49,67 @@ async function openApp(t, original=JSON.stringify(blankState())){
   return {app,modal,toast,click,storage,values,events,windowEvents,importText,tick,read:()=>JSON.parse(values.get(dataKey))};
 }
 
+test('sharing a plan keeps edited or empty post text through image changes, copying and native sharing', async t=>{
+  const state=blankState(), day=localDate();
+  state.plan={startDate:day,targetDate:shiftDay(day,28),startWeight:70,targetWeight:69,kcal:800,p:60,f:30,c:90};
+  const ui=await openApp(t,JSON.stringify(state));
+  const post={value:'',defaultValue:''};
+  const fields={
+    kind:{value:'plan'},format:{value:'square'},theme:{value:'dark'},
+    caption:{value:''},date:{checked:true},weights:{checked:false}
+  };
+  const context={measureText:text=>({width:text.length*16}),fillRect(){},fillText(){}};
+  const canvas={isConnected:true,getContext:()=>context,toBlob:callback=>callback(new Blob(['picture'],{type:'image/png'}))};
+  ui.modal.querySelector=selector=>{
+    if(selector==='#share-text')return post;
+    if(selector==='#share-canvas')return canvas;
+    return fields[selector.match(/^\[name="share-(\w+)"\]$/)?.[1]]??null;
+  };
+  ui.modal.querySelectorAll=()=>[];
+  const change=async(name,properties)=>{
+    const target=Object.assign(fields[name],properties,{name:'share-'+name,dataset:{}});
+    await ui.events.change({target});
+  };
+  let shared,copied;
+  navigator.canShare=()=>true;
+  navigator.share=async payload=>{shared=payload;};
+  navigator.clipboard={writeText:async text=>{copied=text;}};
+  await ui.click('share-plan');
+  assert.match(post.value,/800 kcal/);
+  const edited=post.value.split('\n').filter(line=>!line.includes('800 kcal')).join('\n')+'\n今週の記録';
+  post.value=edited;
+  await change('theme',{value:'light'});
+  assert.equal(post.value,edited);
+  await change('format',{value:'portrait'});
+  assert.equal(canvas.height,1350);
+  assert.equal(post.value,edited);
+  await change('caption',{value:'ひとこと'});
+  await ui.click('share-copy');
+  await ui.click('share-native');
+  assert.equal(copied,edited);
+  assert.equal(shared.text,edited);
+  assert.equal(shared.files[0].type,'image/png');
+  post.value='';
+  await change('format',{value:'story'});
+  assert.equal(post.value,'');
+  await ui.click('share-native');
+  assert.equal(shared.text,'');
+  window.confirm=()=>false;
+  await change('weights',{checked:true});
+  assert.equal(post.value,'');
+  window.confirm=()=>true;
+  await change('weights',{checked:true});
+  assert.match(post.value,/70kg/);
+  post.value+='\n追記';
+  await change('weights',{checked:false});
+  assert.doesNotMatch(post.value,/70kg/);
+  await change('date',{checked:false});
+  assert.doesNotMatch(post.value,/目標日/);
+  await change('kind',{value:'food'});
+  assert.match(post.value,/食事記録/);
+  assert.doesNotMatch(post.value,/800 kcal/);
+});
+
 test('cardio records use time and optional metrics throughout editing, completion and draft copies',async t=>{
   const ui=await openApp(t);
   const exercise='cardio-treadmill',day=localDate();
@@ -321,6 +382,66 @@ test('a write from a second tab wins even when the storage event has not arrived
   await ui.click('unit',{unit:'lbs'});
   assert.equal(ui.read().settings.timerSeconds,180);
   assert.equal(ui.read().settings.unit,'lbs');
+});
+
+test('a storage refresh cannot auto-save a focused note over a second tab; the draft can be resolved explicitly', async t=>{
+  const date=localDate(), state=blankState();
+  state.workouts[date]={title:'Workout',note:'元のメモ',exercises:[]};
+  const ui=await openApp(t,JSON.stringify(state));
+  const localDraft='Aの下書き', remoteNote='Bが保存したメモ';
+  const field={dataset:{change:'session-note',mode:'real',date},defaultValue:'元のメモ',value:localDraft};
+  ui.app.querySelector=selector=>selector.includes('session-note')?field:null;
+  const remote=ui.read();
+  remote.workouts[date].note=remoteNote;
+  ui.values.set(dataKey,JSON.stringify(remote));
+  // Chromium commits a focused textarea's change while innerHTML removes it.
+  let markup=ui.app.innerHTML;
+  let removed=false, blurSave;
+  Object.defineProperty(ui.app,'innerHTML',{
+    get:()=>markup,
+    set(value){
+      if(!removed){removed=true;blurSave=ui.events.change({target:field});}
+      markup=value;
+    }
+  });
+  ui.windowEvents.storage({key:dataKey,storageArea:ui.storage});
+  await blurSave;
+  assert.deepEqual(ui.read(),remote);
+  assert.match(markup,/Bが保存したメモ/);
+  assert.match(markup,/Aの下書き<\/textarea>/);
+
+  field.defaultValue=localDraft;
+  field.value='Aの訂正した下書き';
+  await ui.events.change({target:field});
+  assert.deepEqual(ui.read(),remote);
+  // B saves again before A's explicit choice acquires the record lock.
+  remote.workouts[date].note='Bの再訂正';
+  ui.values.set(dataKey,JSON.stringify(remote));
+  await ui.click('save-note-draft',{date});
+  assert.deepEqual(ui.read(),remote);
+  assert.match(markup,/Bの再訂正/);
+  assert.match(markup,/Aの訂正した下書き<\/textarea>/);
+  await ui.click('save-note-draft',{date});
+  assert.equal(ui.read().workouts[date].note,field.value);
+  assert.doesNotMatch(markup,/data-action="save-note-draft"/);
+});
+
+test('discarding a note draft keeps the other tab’s note, including a deliberate deletion', async t=>{
+  const date=localDate(), state=blankState();
+  state.workouts[date]={title:'Workout',note:'元のメモ',exercises:[]};
+  const ui=await openApp(t,JSON.stringify(state));
+  const field={dataset:{change:'session-note',mode:'real',date},defaultValue:'元のメモ',value:'このタブの下書き'};
+  ui.app.querySelector=selector=>selector.includes('session-note')?field:null;
+  const remote=ui.read();
+  remote.workouts[date].note='';
+  ui.values.set(dataKey,JSON.stringify(remote));
+  // The storage event is still queued when the user leaves the textarea.
+  await ui.events.change({target:field});
+  assert.deepEqual(ui.read(),remote);
+  assert.match(ui.app.innerHTML,/このタブの下書き<\/textarea>/);
+  await ui.click('discard-note-draft',{date});
+  assert.deepEqual(ui.read(),remote);
+  assert.doesNotMatch(ui.app.innerHTML,/このタブの下書き|data-action="discard-note-draft"/);
 });
 
 test('invalid, wrong-mode, failed, and confirmed restores preserve their respective stores',async t=>{

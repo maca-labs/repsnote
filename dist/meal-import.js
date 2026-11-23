@@ -70,6 +70,57 @@ export function reviewedMealDraft(original, fields) {
   return draft;
 }
 
+const editableFields = ['name','meal','baseAmount',...Object.keys(nutrients)];
+
+export function reconcileMealReview(drafts, previous = []) {
+  const matches = new Map();
+  const remaining = new Set(previous);
+  function group(rows, getKey) {
+    const groups = new Map();
+    for (const row of rows) {
+      const key = getKey(row);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(row);
+    }
+    return groups;
+  }
+  function matchBy(key, allowIdentical = false) {
+    const oldGroups = group(remaining, row => key(row.original));
+    const newGroups = group(drafts.filter(draft => !matches.has(draft)), key);
+    for (const [id, foods] of newGroups) {
+      const old = oldGroups.get(id);
+      if (!old || foods.length !== old.length || (foods.length > 1 && !allowIdentical)) continue;
+      foods.forEach((food, i) => {
+        matches.set(food, old[i]);
+        remaining.delete(old[i]);
+      });
+    }
+  }
+  // Identical duplicate foods keep their occurrence order. Weaker matches must be unique.
+  matchBy(draft => JSON.stringify(draft), true);
+  matchBy(draft => JSON.stringify([draft.name,draft.basis,draft.portion,draft.source]));
+  const foodKey = draft => JSON.stringify([draft.name,draft.basis]);
+  matchBy(foodKey);
+  const edited = row => !row.included || row.scale !== '1' ||
+    editableFields.some(key => row.original[key] !== row.values[key]);
+  const uncertain = new Set([...remaining].filter(edited).map(row => foodKey(row.original)));
+  return drafts.map(original => {
+    const saved = matches.get(original);
+    const needsReview = !saved && uncertain.has(foodKey(original));
+    const values = {...original};
+    if (saved) {
+      for (const key of editableFields) {
+        // A correction in the answer wins for that fact. Keep an explicit per-food meal choice.
+        if (saved.values[key] !== saved.original[key] && (key === 'meal' || original[key] === saved.original[key])) {
+          values[key] = saved.values[key];
+        }
+      }
+    }
+    return {original, values, included:saved?.included ?? !needsReview,
+      scale:saved?.scale ?? '1', multiple:saved?.multiple ?? '1', needsReview};
+  });
+}
+
 // Convert a reviewed food to the same base-unit representation used by manual food entry.
 export function mealImportEntry(draft) {
   const name = draft.name.trim();

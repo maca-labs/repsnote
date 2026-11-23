@@ -2,11 +2,56 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { blankState, mealTotals, validateState } from '../dist/core.js';
 import { EXERCISES } from '../dist/catalog.js';
-import { buildMealSearchPrompt, parseMealResponse, prepareMealImport, reviewedMealDraft } from '../dist/meal-import.js';
+import { buildMealSearchPrompt, parseMealResponse, prepareMealImport, reconcileMealReview, reviewedMealDraft } from '../dist/meal-import.js';
 
 const sample = {name:'表示を確認した食品',basis:'serving',portion:'1包装',amount:1,
   kcal:500,p:21,f:12,c:77,source:'検証用の商品表示',estimated:false};
 const parse = items => parseMealResponse(JSON.stringify({items}), '夕食');
+
+test('returning to the answer keeps the selected foods, snack and multiplier when lunch calories are corrected', () => {
+  const lunch = {...sample,name:'弁当',kcal:400};
+  const banana = {...sample,name:'バナナ',kcal:90};
+  const dessert = {...sample,name:'デザート',kcal:200};
+  const previous = reconcileMealReview(parse([lunch, banana, dessert]));
+  previous[1].values.meal = '間食';
+  previous[1].scale = 'custom';
+  previous[1].multiple = '2';
+  previous[2].included = false;
+
+  const rows = reconcileMealReview(parse([dessert, {...lunch,kcal:410}, banana]), previous);
+  assert.deepEqual(rows.map(row => row.included), [false,true,true]);
+  const meals = rows.filter(row => row.included).map(row =>
+    reviewedMealDraft(row.original, {...row.values,multiplier:Number(row.scale === 'custom' ? row.multiple : row.scale)}));
+  const {entries,totals} = prepareMealImport(meals);
+  assert.deepEqual(entries.map(e => [e.name,e.kcal,e.meal,e.amount]), [['弁当',410,'夕食',1],['バナナ',90,'間食',2]]);
+  assert.equal(totals.kcal,590);
+});
+
+test('review edits follow the original food across a reordering with duplicates, removal and insertion', () => {
+  const large = {...sample,portion:'大',kcal:500};
+  const small = {...sample,portion:'小',kcal:250};
+  const deleted = {...sample,name:'旧商品'};
+  const previous = reconcileMealReview(parse([large, small, deleted]));
+  previous[0].included = false;
+  previous[1].values.name = '手入力の名前';
+  previous[1].values.p = 31;
+  previous[2].scale = '2';
+  const fresh = {...sample,name:'新商品'};
+  const rows = reconcileMealReview(parse([fresh, {...small,kcal:255,p:22}, large]), previous);
+  assert.deepEqual(rows.map(r=>[r.values.name,r.values.kcal,r.values.p,r.included,r.scale]), [
+    ['新商品',500,21,true,'1'],['手入力の名前',255,22,true,'1'],[sample.name,500,21,false,'1'],
+  ]);
+  assert.equal(reconcileMealReview(parse([large]))[0].included,true);
+});
+
+test('indistinguishable duplicates keep their order on a round trip and request review when their count changes', () => {
+  const previous = reconcileMealReview(parse([sample,sample]));
+  previous[1].included = false;
+  assert.deepEqual(reconcileMealReview(parse([sample,sample]),previous).map(r=>r.included), [true,false]);
+  const [uncertain] = reconcileMealReview(parse([sample]),previous);
+  assert.equal(uncertain.needsReview,true);
+  assert.equal(uncertain.included,false);
+});
 
 test('meal search prompt requests sources and distinguishes the serving basis from the amount eaten', () => {
   const prompt = buildMealSearchPrompt('幕の内弁当、バナナ1本');

@@ -94,7 +94,10 @@ test('CSV retains v1 strength columns, all cardio metrics and drafts, quoted tex
       {completed:false, minutes:3},
     ]},
   ]};
-  const [header, strength, cardio, draft] = workoutCsv(state,lookup,() => '追加重量').split('\r\n');
+  const lines = workoutCsv(state,lookup,() => '追加重量').split('\r\n');
+  assert.ok(lines[0].endsWith(',"REPS NOTE セットID"'));
+  assert.ok(lines[1].endsWith(',"'+state.workouts['2026-11-22'].exercises[0].sets[0].id+'"'));
+  const [header, strength, cardio, draft] = lines.map(line=>line.slice(0,line.lastIndexOf(',')));
   assert.match(header, /"時間\(分\)","距離\(km\)","傾斜\(%\)","速度\(km\/h\)","消費カロリー\(kcal\)","歩数"$/);
   assert.match(strength, /"'=名,""A""","プッシュアップ","0","0","10","完了","メイン","なし","","追加重量","","","","","",""$/);
   assert.match(cardio, /"トレッドミル","","","","完了","有酸素","","","","12.75","0","-2","6.5","0","0"$/);

@@ -1,0 +1,51 @@
+import { test, expect } from '@playwright/test';
+
+test('save two named posts, reopen, apply or append, then delete just one', async ({page, context, baseURL}) => {
+  await context.grantPermissions(['clipboard-read','clipboard-write'],{origin:baseURL});
+  await page.goto('/');
+  const share = page.locator('[data-action="share"]:visible').first();
+  const panel = page.locator('details.share-templates');
+  const post = page.locator('#share-text');
+  const names = panel.getByLabel('保存した定型文');
+  const open = async () => {
+    await share.click();
+    await panel.locator('summary').click();
+  };
+  const save = async (name,text) => {
+    await post.fill(text);
+    await panel.getByLabel('新しい定型文の名前').fill(name);
+    await panel.getByRole('button',{name:'今の投稿文を保存'}).click();
+  };
+  await open();
+  const first = 'トレーニング終了！\n#筋トレ';
+  const second = '今週の記録 <日曜> & 仲間へ';
+  await save('ジム用',first);
+  await expect(names).toHaveValue('ジム用');
+  await save('週末',second);
+  await expect(names).toHaveValue('週末');
+  await save('ジム用','別の投稿');
+  await expect(panel.getByRole('alert')).toContainText('使用中');
+  await page.reload();
+  await open();
+  await names.selectOption('ジム用');
+  await panel.getByRole('button',{name:'投稿文に使う'}).click();
+  await page.locator('[name="share-theme"]').selectOption('light');
+  await expect(post).toHaveValue(first);
+  page.once('dialog',dialog=>dialog.dismiss());
+  await page.locator('[name="share-date"]').click();
+  await expect(page.locator('[name="share-date"]')).toBeChecked();
+  await expect(post).toHaveValue(first);
+  await names.selectOption('週末');
+  await panel.getByRole('button',{name:'末尾に追加'}).click();
+  const combined = first+'\n'+second;
+  await expect(post).toHaveValue(combined);
+  await page.getByRole('button',{name:'投稿文をコピー'}).click();
+  await expect.poll(()=>page.evaluate(async ()=>(await navigator.clipboard.readText()).replaceAll('\r\n','\n'))).toBe(combined);
+  page.once('dialog',dialog=>dialog.accept());
+  await panel.getByRole('button',{name:'削除',exact:true}).click();
+  await expect(names.locator('option')).toHaveText(['ジム用']);
+  await expect(post).toHaveValue(combined);
+  await page.reload();
+  await open();
+  await expect(names.locator('option')).toHaveText(['ジム用']);
+});

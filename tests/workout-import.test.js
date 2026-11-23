@@ -11,6 +11,86 @@ const find = id => EXERCISES.find(exercise => exercise.id === id);
 const merge = (state, parsed, pairs) => mergeWorkoutImport(state,parsed,new Map(pairs),EXERCISES);
 const day = '2026-01-03';
 
+for (const format of ['current', 'legacy']) {
+  test(`a manually recorded set stays corrected after re-importing the same ${format} export`, () => {
+    const state = blankState();
+    const set = {...newSet(40,8),completed:true};
+    state.workouts[day] = {title:'PUSH',note:'',exercises:[
+      {id:'bench',exerciseId:'barbell-bench',note:'',sets:[set]},
+    ]};
+    const name = find('barbell-bench').name;
+    const csv = format === 'current' ? workoutCsv(state,find,ex=>ex.load)
+      : `日付,メニュー,種目,重量(kg),重量(lbs),回数,完了,重量の意味\n${day},PUSH,${name},40,,8,完了,合計`;
+    const parsed = parse(csv);
+    const mapping = [[name,'barbell-bench']];
+    const first = merge(state,parsed,mapping);
+    assert.equal(first.duplicates,1);
+    const reopened = validateState(JSON.parse(JSON.stringify(first.state)),ids);
+    reopened.workouts[day].exercises[0].sets[0].reps = 9;
+    const again = merge(reopened,parsed,mapping);
+    assert.deepEqual(again.state.workouts[day].exercises[0].sets.map(s=>[s.id,s.reps]),[[set.id,9]]);
+    assert.equal(again.duplicates,1);
+    assert.equal(again.added,0);
+  });
+}
+
+test('a native export identifies corrected sets even before their first re-import and preserves separate identical sets', () => {
+  const state = blankState();
+  const sets = [newSet(40,8),newSet(40,8)];
+  state.workouts[day] = {title:'PUSH',note:'',exercises:[{id:'lift',exerciseId:'barbell-bench',note:'',sets}]};
+  const parsed = parse(workoutCsv(state,find,ex=>ex.load));
+  const mapping = [[find('barbell-bench').name,'barbell-bench']];
+  const fresh = merge(blankState(),parsed,mapping);
+  assert.deepEqual(fresh.state.workouts[day].exercises[0].sets.map(s=>s.id),sets.map(s=>s.id));
+  sets[0].reps = 9;
+  assert.equal(merge(state,parsed,mapping).added,0);
+});
+
+test('a legacy set matched under several exercise names recognizes every checked CSV after a correction', () => {
+  const id = 'barbell-bench';
+  const names = ['Bench',find(id).name,'ベンチ'];
+  const mapping = names.map(name => [name,id]);
+  const legacy = labels => parse('日付,種目,重量,回数\n'+labels.map(name => [day,name,40,8].join(',')).join('\n'));
+  let state = merge(blankState(),legacy([names[0]]),mapping).state;
+  for (const name of names.slice(1)) {
+    const checked = merge(state,legacy([name]),mapping);
+    assert.equal(checked.duplicates,1);
+    assert.equal(checked.linked,1);
+    state = checked.state;
+  }
+  state = validateState(JSON.parse(JSON.stringify(state)),ids);
+  state.workouts[day].exercises[0].sets[0].reps = 9;
+  for (const name of names) assert.equal(merge(state,legacy([name]),mapping).added,0);
+  // Two rows in a single CSV still represent two sets, even if both labels have matched one set before.
+  const both = merge(state,legacy(names.slice(0,2)),mapping);
+  assert.deepEqual(both.state.workouts[day].exercises[0].sets.map(set=>set.reps),[9,8]);
+  assert.equal(merge(both.state,legacy(names.slice(0,2)),mapping).added,0);
+});
+
+test('supported backup IDs round-trip exactly without becoming DOM IDs when importing on another device', () => {
+  const id = 'barbell-bench', mapping = [[find(id).name,id]];
+  const originalIds = [' set A ','組"<見本>,😀\r\n','~"x"'];
+  const state = blankState();
+  const sets = originalIds.map(id=>({...newSet(40,8),id,completed:true}));
+  state.workouts[day] = {title:'PUSH',note:'',exercises:[{id:'entry',exerciseId:id,note:'',sets}]};
+  validateState(state,ids);
+  const csv = workoutCsv(state,find,ex=>ex.load);
+  const parsed = parse(csv);
+  assert.deepEqual(parsed.rows.map(row=>row.setId),originalIds);
+  sets[0].reps = 9;
+  assert.equal(merge(state,parsed,mapping).added,0);
+  const other = validateState(merge(blankState(),parsed,mapping).state,ids);
+  const imported = other.workouts[day].exercises[0].sets;
+  assert.equal(new Set(imported.map(set=>set.id)).size,3);
+  for (const set of imported) assert.match(set.id,/^[a-zA-Z0-9_.:-]+$/);
+  assert.deepEqual(parse(workoutCsv(other,find,ex=>ex.load)).rows.map(row=>row.setId),originalIds);
+  imported[1].reps = 9;
+  assert.equal(merge(other,parsed,mapping).added,0);
+  // Copies have an independent identity even when an old client copied import metadata.
+  imported.push({...imported[0],id:'copy-1'});
+  assert.deepEqual(parse(workoutCsv(other,find,ex=>ex.load)).rows.map(r=>r.setId),[...originalIds,'copy-1']);
+});
+
 test('a transcribed table can be pasted from a single AI code block', () => {
   const tsv = '日付\t種目\t重量(lb)\t回数\n2026-01-03\tダンベル\t20\t8';
   const fenced = '```tsv\r\n'+tsv+'\r\n```\n';

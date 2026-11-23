@@ -242,6 +242,21 @@ export function demoState(today=localDate()) {
   s.meals[today]=s.foods.map((f,i)=>({...f,id:uid(),meal:['朝食','昼食','間食'][i],amount:1}));
   return s;
 }
+function validTemplateName(name) {
+  return typeof name === 'string' && name.trim().length > 0 && name.length <= 80;
+}
+function validTemplateText(text) {
+  return typeof text === 'string' && text.trim().length > 0 && text.length <= 50000;
+}
+export function addShareTemplate(settings, name, text) {
+  const templates = settings.shareTemplates ?? [];
+  name = name.trim();
+  if (!validTemplateName(name)) throw new Error('定型文の名前を1〜80文字で入力してください。');
+  if (!validTemplateText(text)) throw new Error('保存する投稿文を1〜50,000文字で入力してください。');
+  if (templates.some(item => item.name === name)) throw new Error('この名前は使用中です。別の名前を入力してください。');
+  settings.shareTemplates = [...templates,{name,text}];
+}
+
 // Strict validation precedes replacement. Never execute or render imported HTML.
 export function validateState(input,exerciseIds=[]) {
   const bad=m=>{throw new Error(m);};
@@ -257,6 +272,13 @@ export function validateState(input,exerciseIds=[]) {
   const s=input;
   if(!obj(s.settings)||!validUnit(s.settings.unit)||typeof s.settings.autoTimer!=='boolean'||!num(s.settings.timerSeconds,10,3600)||!num(s.settings.weightStep,.25,20))bad('設定が正しくありません。');
   if(Object.hasOwn(s.settings,'timerSound') && typeof s.settings.timerSound!=='boolean')bad('タイマーの終了音の設定が正しくありません。');
+  if (Object.hasOwn(s.settings,'shareTemplates')) {
+    const templates = s.settings.shareTemplates;
+    if (!array(templates) || !templates.every(t => obj(t) && validTemplateName(t.name)
+      && t.name.trim() === t.name && validTemplateText(t.text)) || !unique(templates.map(t => t.name))) {
+      bad('投稿文の定型文が正しくありません。');
+    }
+  }
   if(!array(s.customExercises)||!unique(s.customExercises.map(e=>e?.id)))bad('カスタム種目が正しくありません。');
   for(const e of s.customExercises)if(!obj(e)||!id(e.id)||!str(e.name)||!EXERCISE_GROUPS.includes(e.group)||!['バーベル','ダンベル','マシン','ケーブル','自重'].includes(e.equipment)||!['single','total','stack','body'].includes(e.load)||!array(e.aliases,50)||!e.aliases.every(a=>str(a)))bad('種目の値が正しくありません。');
   const known=new Set([...exerciseIds,...s.customExercises.map(e=>e.id)]);
@@ -290,6 +312,14 @@ export function validateState(input,exerciseIds=[]) {
           const origin = set.memoImport;
           if (!obj(origin) || !id(origin.id) || !str(origin.receipt,4096) || !origin.receipt.length) {
             bad('セットの取り込み履歴が正しくありません。');
+          }
+          if (Object.hasOwn(origin,'additionalReceipts') && (!Array.isArray(origin.additionalReceipts)
+            || !origin.additionalReceipts.every(value => str(value,4096) && value.length) || !unique(origin.additionalReceipts))) {
+            bad('セットの取り込み履歴が正しくありません。');
+          }
+          if (Object.hasOwn(origin,'sourceId')) {
+            if (!id(origin.sourceId)) bad('取り込み元のセットIDが正しくありません。');
+            if (origin.id === set.id && origin.sourceId !== set.id) allIds.push(origin.sourceId);
           }
         }
         if (cardioIds.has(e.exerciseId)) {

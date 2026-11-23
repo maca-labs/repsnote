@@ -39,6 +39,33 @@ let view='workout',day=today,month=day.slice(0,7),prGroup='すべて',searchText
 let mode='demo',state;
 try{mode=localStorage.getItem('repnote:mode')??(localStorage.getItem('repnote:v1:real')?'real':'demo');if(!['demo','real'].includes(mode))mode='demo';}catch{storageProblem='このブラウザでは保存が使えません。設定からバックアップを書き出せます。';}
 const storageKey=()=>`repnote:v1:${mode}`;
+const noteDrafts=new Map();
+const noteSelector='textarea[data-change="session-note"]';
+let refreshingNote=false;
+function noteDraftKey(date,owner=mode){return `repnote:note-draft:${owner}:${date}`;}
+function getNoteDraft(key){
+  if(noteDrafts.has(key))return noteDrafts.get(key);
+  try{
+    const draft=JSON.parse(window.sessionStorage?.getItem(key)??'null');
+    if(typeof draft?.base==='string'&&typeof draft.text==='string'){
+      noteDrafts.set(key,draft);
+      return draft;
+    }
+  }catch{}
+}
+function setNoteDraft(key,draft){
+  if(draft)noteDrafts.set(key,draft);else noteDrafts.delete(key);
+  try{
+    if(draft)window.sessionStorage?.setItem(key,JSON.stringify(draft));
+    else window.sessionStorage?.removeItem(key);
+  }catch{} // The open tab still keeps the draft when sessionStorage is unavailable.
+}
+function rememberNoteDraft(field){
+  const key=noteDraftKey(field.dataset.date,field.dataset.mode);
+  const draft={base:getNoteDraft(key)?.base??field.defaultValue,text:field.value};
+  setNoteDraft(key,draft);
+  return draft;
+}
 const exerciseIds=EXERCISES.map(e=>e.id);
 let loadedRaw, committedState;
 function load(){
@@ -74,10 +101,22 @@ function invalidateHistory(){
   stagedImport=null;
 }
 function refreshFromStorage(){
+  const field=app.querySelector(noteSelector);
+  const focused=field&&field===document.activeElement;
+  if(field&&field.value!==field.defaultValue)rememberNoteDraft(field);
   invalidateHistory();
   load();
-  if(modal.open)modal.close();
-  render();
+  // Replacing a focused textarea can dispatch change while removing the old node.
+  refreshingNote=true;
+  try{
+    if(modal.open)modal.close();
+    render();
+  }finally{refreshingNote=false;}
+  if(focused){
+    const next=app.querySelector(noteSelector);
+    next?.focus({preventScroll:true});
+    next?.setSelectionRange(field.selectionStart,field.selectionEnd,field.selectionDirection);
+  }
   toast(storageProblem||'別のタブの変更を反映しました。最新の記録を確認してください');
 }
 // Check the stored revision inside a per-mode lock before modifying any records.
@@ -140,7 +179,7 @@ const catalog=()=>getExercises(state);
 function showWorkoutImport(){
   openWorkoutImport({openDialog,modal,h,bindForm,catalog:catalog(),toast,onMerge(parsed,mapping){
     const result=mergeWorkoutImport(state,parsed,mapping,catalog());
-    if(result.added){
+    if(result.added || result.linked){
       state=result.state;
       if(!commit())return false;
     }
@@ -251,7 +290,24 @@ async function copyAiPrompt(){
 }
 function renderWorkout(){const w=getWorkout(),stats=C.workoutStats(w),prs=C.records(state);return `<div class="layout"><section class="main-col">${dateStrip()}<div class="workout-hero"><div><div class="eyebrow">${day===today?'TODAY’S WORKOUT':'WORKOUT LOG'}</div><div class="hero-title">${h(w.title)}</div>${stats.exercises?`<p>${h(catalogGroups(w))}</p>`:''}</div><div class="hero-right">${btn('routines','メニューを選ぶ','list')}</div></div><div class="metric-grid"><div class="metric"><div class="label">${icon('check')}完了セット</div><div class="value">${stats.sets}<span>/ ${stats.total}</span></div></div><div class="metric"><div class="label">${icon('weight')}ボリューム</div><div class="value">${weight(stats.volume,unit(),0)}<span>${unit()}</span></div></div><div class="metric"><div class="label">${icon('dumbbell')}種目</div><div class="value">${stats.exercises}</div></div></div><div class="workout-toolbar"><h2>セットを記録</h2><div class="row">${btn('copy-previous','前回をコピー','copy')}</div></div>
   ${w.exercises.length?w.exercises.map(e=>renderExercise(e,prs)).join(''):`<div class="panel empty">${icon('dumbbell')}<h3>この日のメニューは未登録です</h3><p>前回の記録や保存したメニューから、種目と入力値を呼び出せます。</p>${btn('routines','メニューからはじめる','list','primary')}</div>`}
-  <button class="add-exercise" data-action="add-exercise">${icon('plus')}種目を追加</button><div class="panel session-note" style="margin-top:20px"><div class="between"><h3>トレーニングメモ</h3>${btn('save-routine','メニューを保存','save','ghost')}</div><textarea placeholder="調子、フォーム、次回気をつけたいこと…" aria-label="トレーニングメモ" maxlength="2000" data-change="session-note">${h(w.note)}</textarea><div class="save-note">${icon('shield')}${mode==='demo'?'サンプルモードで保存':'このブラウザに自動保存'} · 完了したセットを集計</div></div><div class="small" style="margin-top:14px">ボリューム＝完了したセットの入力重量 × 回数の合計。ダンベルは片手分、自重の体重分は含みません。</div></section><aside class="side-col">${nutritionPanel()}${highlightPanel(prs)}${weightPanel()}<div class="tip-box"><strong>${icon('copy')} セットの複製</strong>行のコピーアイコンで同じ内容のセットを複製。チェックを入れたセットだけが記録に加わります。</div></aside></div>`;}
+  <button class="add-exercise" data-action="add-exercise">${icon('plus')}種目を追加</button><div class="panel session-note" style="margin-top:20px"><div class="between"><h3>トレーニングメモ</h3>${btn('save-routine','メニューを保存','save','ghost')}</div>${sessionNoteEditor(w.note)}<div class="save-note">${icon('shield')}${mode==='demo'?'サンプルモードで保存':'このブラウザに自動保存'} · 完了したセットを集計</div></div><div class="small" style="margin-top:14px">ボリューム＝完了したセットの入力重量 × 回数の合計。ダンベルは片手分、自重の体重分は含みません。</div></section><aside class="side-col">${nutritionPanel()}${highlightPanel(prs)}${weightPanel()}<div class="tip-box"><strong>${icon('copy')} セットの複製</strong>行のコピーアイコンで同じ内容のセットを複製。チェックを入れたセットだけが記録に加わります。</div></aside></div>`;}
+function sessionNoteEditor(saved){
+  const key=noteDraftKey(day);
+  let draft=getNoteDraft(key);
+  if(draft&&draft.text===saved){setNoteDraft(key,null);draft=null;}
+  const conflict=draft&&draft.base!==saved;
+  return `${draft?`<div class="info-box" role="status">${conflict?`<strong>別のタブで保存されたメモ</strong><p style="white-space:pre-wrap;overflow-wrap:anywhere">${h(saved)||'（空欄）'}</p>`:''}このタブの下書きは下の欄で編集できます。</div>`:''}
+    <textarea placeholder="調子、フォーム、次回気をつけたいこと…" aria-label="トレーニングメモ" maxlength="2000" data-change="session-note" data-date="${day}" data-mode="${mode}" ${draft?'data-review-draft':''}>
+${h(draft?.text??saved)}</textarea>
+    ${draft?`<div class="row">${btn('save-note-draft','下書きで保存','save','primary',`data-date="${day}"`)}${btn('discard-note-draft','保存済みのメモを使う','','ghost',`data-date="${day}"`)}</div>`:''}`;
+}
+function saveSessionNote(date,text,field){
+  ensureWorkout(date).note=text;
+  if(!save())return false;
+  setNoteDraft(noteDraftKey(date),null);
+  if(field)field.defaultValue=text;
+  return true;
+}
 function catalogGroups(w){return [...new Set(w.exercises.map(e=>exercise(e.exerciseId).group))].filter(Boolean).join('・');}
 function options(values,current,formatter=n=>String(n),extra=''){return values.map(n=>`<option value="${n}" ${(typeof n==='number'?Math.abs(n-current)<1e-8:n===current)?'selected':''}>${h(formatter(n))}</option>`).join('')+extra;}
 function weightOption({kg, value}, selectedKg) {
@@ -808,12 +864,52 @@ function celebrate(ex,s,first=false){const u=exerciseUnit(ex.id);const root=docu
 const shareWeightsByKind = {workout:true, food:true, plan:false, month:false};
 let shareMonth, shareMonthSummary;
 let sharePrefs={kind:'workout',format:'square',theme:'dark',date:true,weights:true,caption:''},shareBlob=null,shareRevision=0;
+function shareTemplateFields(selected=''){
+  const templates=state.settings.shareTemplates ?? [];
+  const saved=templates.length ? selectField('saved-template','保存した定型文',templates.map(t=>t.name),selected)
+    + '<div class="template-actions">'+btn('template-apply','投稿文に使う')+btn('template-append','末尾に追加')+btn('template-delete','削除')+'</div>' : '';
+  return saved + inputField('template-name','新しい定型文の名前','','maxlength="80" placeholder="例：トレーニング後"')
+    + btn('template-save','今の投稿文を保存','save')+'<p class="form-error" role="alert"></p>';
+}
+function handleShareTemplate(action){
+  const fields=modal.querySelector('#share-template-fields');
+  const post=modal.querySelector('#share-text');
+  if(!fields || !post)return;
+  const templates=state.settings.shareTemplates ?? [];
+  const selected=fields.querySelector('[name="saved-template"]')?.value;
+  const template=templates.find(t=>t.name===selected);
+  let nextSelection=selected;
+  if(action==='template-save'){
+    const name=fields.querySelector('[name="template-name"]');
+    try{
+      C.addShareTemplate(state.settings,name.value,post.value);
+    }catch(err){
+      fields.querySelector('[role="alert"]').textContent=err.message;
+      return;
+    }
+    nextSelection=name.value.trim();
+  }else if(!template)return;
+  else if(action==='template-delete'){
+    if(!window.confirm('「'+template.name+'」を定型文から削除しますか？'))return;
+    state.settings.shareTemplates=templates.filter(t=>t.name!==selected);
+    nextSelection='';
+  }else{
+    post.value=action==='template-append' && post.value ? post.value+'\n'+template.text : template.text;
+    post.focus();
+    toast(action==='template-append'?'定型文を末尾に追加しました':'定型文を投稿文に反映しました');
+    return;
+  }
+  if(!save())return;
+  fields.innerHTML=shareTemplateFields(nextSelection);
+  (fields.querySelector('[name="saved-template"]') ?? fields.querySelector('[name="template-name"]')).focus();
+  toast(action==='template-save'?'定型文を保存しました':'定型文を削除しました');
+}
 function shareDialog(kind=null){
   shareMonth=view==='history'?month:day.slice(0,7);
   shareMonthSummary=null;
   sharePrefs.kind=kind??({food:'food', body:'plan', history:'month'}[view]??'workout');
   sharePrefs.weights=shareWeightsByKind[sharePrefs.kind];
-  openDialog('記録をシェア',`<div class="share-layout"><div><div class="share-preview"><canvas id="share-canvas" aria-label="共有画像のプレビュー"></canvas></div><div class="share-caption">${mode==='demo'?'画像にも「SAMPLE」を表示します。':'保存前に、公開してよい内容か確認できます。'}</div></div><div class="share-controls">${selectField('share-kind','シェアする内容',[['workout','トレーニング'],['food','食事・PFC'],['plan','ボディメイク計画'],['month','月間まとめ']],sharePrefs.kind)}${selectField('share-format','画像サイズ',[['square','正方形 1:1'],['portrait','投稿向け 4:5'],['story','ストーリー 9:16']],sharePrefs.format)}${selectField('share-theme','デザイン',[['dark','ブラック'],['light','ホワイト']],sharePrefs.theme)}${inputField('share-caption','ひとこと（任意）',sharePrefs.caption,'maxlength="60" placeholder="記録に添えるコメント"')}<label class="checkbox-row"><input name="share-date" type="checkbox" ${sharePrefs.date?'checked':''}>日付を表示</label><label class="checkbox-row"><input name="share-weights" type="checkbox" ${sharePrefs.weights?'checked':''}>重量・体重を表示</label>${btn('share-native','SNSに共有','share','primary share-full')}${btn('share-download','画像を保存','download','share-full')}${btn('share-copy','投稿文をコピー','copy','share-full')}</div></div><textarea class="share-text" id="share-text" aria-label="投稿文・自由に編集できます"></textarea><p class="share-caption">SNSへの送信は端末の共有画面から選べます。対応していないブラウザでは、画像を保存して添付してください。</p>`);drawShare();}
+  openDialog('記録をシェア',`<div class="share-layout"><div><div class="share-preview"><canvas id="share-canvas" aria-label="共有画像のプレビュー"></canvas></div><div class="share-caption">${mode==='demo'?'画像にも「SAMPLE」を表示します。':'保存前に、公開してよい内容か確認できます。'}</div></div><div class="share-controls">${selectField('share-kind','シェアする内容',[['workout','トレーニング'],['food','食事・PFC'],['plan','ボディメイク計画'],['month','月間まとめ']],sharePrefs.kind)}${selectField('share-format','画像サイズ',[['square','正方形 1:1'],['portrait','投稿向け 4:5'],['story','ストーリー 9:16']],sharePrefs.format)}${selectField('share-theme','デザイン',[['dark','ブラック'],['light','ホワイト']],sharePrefs.theme)}${inputField('share-caption','ひとこと（任意）',sharePrefs.caption,'maxlength="60" placeholder="記録に添えるコメント"')}<label class="checkbox-row"><input name="share-date" type="checkbox" ${sharePrefs.date?'checked':''}>日付を表示</label><label class="checkbox-row"><input name="share-weights" type="checkbox" ${sharePrefs.weights?'checked':''}>重量・体重を表示</label>${btn('share-native','SNSに共有','share','primary share-full')}${btn('share-download','画像を保存','download','share-full')}${btn('share-copy','投稿文をコピー','copy','share-full')}</div></div><textarea class="share-text" id="share-text" aria-label="投稿文・自由に編集できます"></textarea><details class="share-templates"><summary>投稿文の定型文</summary><div id="share-template-fields">${shareTemplateFields()}</div></details><p class="share-caption">SNSへの送信は端末の共有画面から選べます。対応していないブラウザでは、画像を保存して添付してください。</p>`);drawShare();}
 function workoutShareReport(){
   return sharedWorkout(getWorkout(), exercise, sharePrefs.weights, describeSet, C.recordUpdateCount(state, day));
 }
@@ -839,7 +935,7 @@ function shareContentText(report) {
   }
   return `${mode === 'demo' ? '【サンプル】\n' : ''}${date}${lines.join('\n')}${sharePrefs.caption ? '\n'+sharePrefs.caption : ''}\nREPS NOTE\n#REPSNOTE #筋トレ記録`;
 }
-function drawShare() {
+function drawShare(resetPost=false) {
   const canvas = modal.querySelector('#share-canvas');
   if (!canvas) return;
   const revision = ++shareRevision;
@@ -1002,7 +1098,10 @@ function drawShare() {
     divider(H-123,ink,3);
     label(sharePrefs.caption,left,H-65,32);
   }
-  modal.querySelector('#share-text').value = shareContentText(log);
+  const post = modal.querySelector('#share-text');
+  const useGeneratedText = resetPost || post.value === post.defaultValue;
+  post.defaultValue = shareContentText(log);
+  if (useGeneratedText) post.value = post.defaultValue;
   canvas.toBlob(blob=>{
     if (revision !== shareRevision || !canvas.isConnected) return;
     shareBlob = blob;
@@ -1012,6 +1111,8 @@ function drawShare() {
 }
 async function shareNative(){if(!shareBlob){toast('画像を準備中です。もう一度お試しください');return;}const file=new File([shareBlob],shareFilename(sharePrefs.kind,sharePrefs.date,day,today,shareMonth),{type:'image/png'}),text=modal.querySelector('#share-text')?.value??shareContentText();try{if(navigator.canShare?.({files:[file]})&&navigator.share){await navigator.share({files:[file],title:'REPS NOTE',text});}else{download(shareBlob,file.name);toast('画像のダウンロードを開始しました。SNSで添付してください');}}catch(err){if(err.name!=='AbortError'){download(shareBlob,file.name);toast('共有できなかったため画像のダウンロードを開始しました');}}}
 const recordActions=new Set([
+  'template-save','template-delete',
+  'save-note-draft',
   'favorite','picker-favorite','choose-exercise','use-routine','delete-routine','add-set','add-three-sets','copy-set','complete-set',
   'delete-set','delete-exercise','copy-exercise-previous','copy-previous','copy-food','copy-food-day','delete-food',
   'delete-saved-food','delete-plan','delete-body','start-timer','pause-timer','reset-timer','close-timer','confirm-import','undo',
@@ -1029,7 +1130,16 @@ document.addEventListener('click',event=>{
   return handleAction(d);
 });
 async function handleAction(d){try{switch(d.action){
+  case 'template-save':case 'template-delete':case 'template-append':case 'template-apply':handleShareTemplate(d.action);break;
   case 'copy-ai-prompt':await copyAiPrompt();break;
+  case 'save-note-draft':{
+    const field=app.querySelector(noteSelector);
+    if(d.date===day&&field&&getNoteDraft(noteDraftKey(day))&&saveSessionNote(day,field.value,field))render();
+    break;
+  }
+  case 'discard-note-draft':
+    if(d.date===day){setNoteDraft(noteDraftKey(day),null);render();}
+    break;
   case 'nav':view=d.view;render();window.scrollTo({top:0,behavior:'instant'});break;
   case 'nav-food':view='food';render();window.scrollTo({top:0,behavior:'instant'});break;
   case 'nav-workout':view='workout';render();break;
@@ -1193,8 +1303,14 @@ document.addEventListener('change',event=>{
     }else void timerSound.disarm();
   }
   if(el.dataset.change==='session-note'){
-    const date=day, note=el.value;
-    return withRecordLock(()=>{ensureWorkout(date).note=note;save();},{allowDayChange:true});
+    if(refreshingNote||el.dataset.mode!==mode)return;
+    const date=el.dataset.date, key=noteDraftKey(date);
+    const draft=rememberNoteDraft(el);
+    if(el.dataset.reviewDraft!==undefined||draft.base!==(state.workouts[date]?.note??''))return;
+    return withRecordLock(()=>{
+      // Another edit may have queued while this blur was waiting for the lock.
+      if(getNoteDraft(key)===draft)saveSessionNote(date,draft.text,el);
+    },{allowDayChange:true});
   }
   if(recordChanges.has(el.dataset.change))return withRecordLock(()=>handleChange(el));
   return handleChange(el);
@@ -1243,15 +1359,29 @@ function updateSharePreferences() {
   const kind = field('kind').value;
   const weights = field('weights');
   if (kind !== sharePrefs.kind) weights.checked = shareWeightsByKind[kind];
+  // Switching content or privacy settings must also apply to the text sent with the image.
+  const resetPost = kind !== sharePrefs.kind || field('date').checked !== sharePrefs.date || weights.checked !== sharePrefs.weights;
+  const post = modal.querySelector('#share-text');
+  if (resetPost && post.value !== post.defaultValue &&
+      !window.confirm('表示する記録を変更すると、編集中の投稿文を作り直します。変更しますか？')) {
+    field('kind').value = sharePrefs.kind;
+    field('date').checked = sharePrefs.date;
+    weights.checked = sharePrefs.weights;
+    return;
+  }
   shareWeightsByKind[kind] = weights.checked;
   sharePrefs = {kind, format:field('format').value, theme:field('theme').value,
     caption:field('caption').value, date:field('date').checked, weights:weights.checked};
-  drawShare();
+  drawShare(resetPost);
 }
 modal.addEventListener('click',e=>{if(e.target===modal){const rect=modal.getBoundingClientRect();if(e.clientX<rect.left||e.clientX>rect.right||e.clientY<rect.top||e.clientY>rect.bottom)modal.close();}});
 window.addEventListener('storage',e=>{
   if(e.storageArea!==localStorage||(e.key!==null&&e.key!==storageKey()))return;
   if(localStorage.getItem(storageKey())!==loadedRaw)refreshFromStorage();
+});
+window.addEventListener('pagehide',()=>{
+  const field=app.querySelector(noteSelector);
+  if(field&&field.value!==field.defaultValue)rememberNoteDraft(field);
 });
 render();
 

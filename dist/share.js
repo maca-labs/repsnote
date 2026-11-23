@@ -1,4 +1,5 @@
 import { allSets, bodyMeasurementAsOf, cardioDetails, compareBodyMeasurements, fmt, fromKg } from './core.js';
+import { workoutCsvSetId } from './workout-import.js';
 
 function workoutCounts(strength, cardio) {
   if (!cardio) return strength+'セット';
@@ -95,19 +96,20 @@ export function workoutCardLayout(entries, available, fitsLine = () => true) {
 export function workoutCsv(state, getExercise, loadLabel) {
   const rows = [[
     '日付','メニュー','種目','重量(kg)','重量(lbs)','回数','完了','種類','補助','RPE','重量の意味',
-    '時間(分)','距離(km)','傾斜(%)','速度(km/h)','消費カロリー(kcal)','歩数',
+    '時間(分)','距離(km)','傾斜(%)','速度(km/h)','消費カロリー(kcal)','歩数','REPS NOTE セットID',
   ]];
   for (const set of allSets(state)) {
     const exercise = getExercise(set.exerciseId);
     const status = set.completed ? '完了' : '未完了';
     const common = [set.date, state.workouts[set.date].title, exercise.name];
+    const csvId = workoutCsvSetId(set);
     if (exercise.load === 'cardio') {
       rows.push([...common, '', '', '', status, '有酸素', '', '', '',
-        set.minutes, set.distanceKm, set.inclinePct, set.speedKmh, set.kcal, set.steps]);
+        set.minutes, set.distanceKm, set.inclinePct, set.speedKmh, set.kcal, set.steps, csvId]);
     } else {
       rows.push([...common, set.kg, fromKg(set.kg,'lbs'), set.reps, status,
         set.kind === 'work' ? 'メイン' : 'ウォームアップ', set.assisted ? 'あり' : 'なし',
-        set.rpe, loadLabel(exercise), '', '', '', '', '', '']);
+        set.rpe, loadLabel(exercise), '', '', '', '', '', '', csvId]);
     }
   }
   function cell(value) {
