@@ -51,6 +51,7 @@ export const CARDIO_FIELDS = [
   {key:'steps', label:'歩数', unit:'歩', min:0, max:1000000, step:1, required:false},
 ];
 const cardioIds = new Set(EXERCISES.filter(ex => ex.load === 'cardio').map(ex => ex.id));
+export const isCardioExercise = exerciseId => cardioIds.has(exerciseId);
 export function validCardioValue(field, value) {
   if (value == null) return !field.required;
   if (!Number.isFinite(value) || value < field.min || value > field.max) return false;
@@ -238,9 +239,12 @@ export function planStats(plan,body=[],today=localDate(),now) {
   const span=daysBetween(plan.startDate,plan.targetDate);
   const measuredByToday = bodyMeasurementAsOf(today,now);
   const values=body.filter(b=>b.date>=plan.startDate && measuredByToday(b)).sort(compareBodyMeasurements);
-  const current=values.at(-1)?.kg??plan.startWeight;
+  const measuredWeight=values.at(-1)?.kg;
+  const current=measuredWeight??plan.startWeight;
   const delta=plan.targetWeight-plan.startWeight;
-  return {current,weekly:span>0?delta/span*7:0,remainingDays:Math.max(0,daysBetween(today,plan.targetDate)),progress:delta===0?100:Math.max(0,Math.min(100,(current-plan.startWeight)/delta*100)),change:current-plan.startWeight,span};
+  const progress=delta===0 ? null : Math.max(0,Math.min(100,(current-plan.startWeight)/delta*100));
+  const targetDifferenceKg=measuredWeight==null ? null : measuredWeight-plan.targetWeight;
+  return {current,weekly:span>0?delta/span*7:0,remainingDays:Math.max(0,daysBetween(today,plan.targetDate)),progress,targetDifferenceKg,change:current-plan.startWeight,span};
 }
 export function demoState(today=localDate()) {
   const s=blankState();
@@ -336,7 +340,7 @@ export function validateState(input,exerciseIds=[]) {
             if (origin.id === set.id && origin.sourceId !== set.id) allIds.push(origin.sourceId);
           }
         }
-        if (cardioIds.has(e.exerciseId)) {
+        if (isCardioExercise(e.exerciseId)) {
           const hasStrengthFields = ['kg','reps','kind','assisted','rpe'].some(key => Object.hasOwn(set, key));
           if (hasStrengthFields || !CARDIO_FIELDS.every(field => validCardioValue(field, set[field.key]))) {
             bad('有酸素運動の記録が正しくありません。');

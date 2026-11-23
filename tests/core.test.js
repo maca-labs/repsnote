@@ -307,11 +307,25 @@ test('gain, maintenance, unset, and expired plans remain finite and bounded', ()
   assert.equal(planStats({ ...PLAN, targetWeight: 84 }, [{ date: TODAY, kg: 82 }], TODAY).progress, 50);
   const maintenance = planStats({ ...PLAN, targetWeight: 80 }, [], TODAY);
   assert.equal(maintenance.weekly, 0);
-  assert.equal(maintenance.progress, 100);
+  assert.equal(maintenance.progress, null);
+  assert.equal(maintenance.targetDifferenceKg, null);
   assert.equal(planStats(PLAN, [{ date: TODAY, kg: 74 }], TODAY).progress, 100);
   assert.equal(planStats(PLAN, [{ date: TODAY, kg: 82 }], TODAY).progress, 0);
   assert.equal(planStats(PLAN, [], '2027-01-01').remainingDays, 0);
   assert.equal(planStats({ ...PLAN, targetDate: PLAN.startDate }, [], TODAY).weekly, 0);
+});
+
+test('maintenance uses the latest measurement since the plan started for its signed target difference', () => {
+  const plan = {...PLAN,startWeight:70,targetWeight:70};
+  const now = new Date(TODAY+'T12:00:00');
+  const outside = [{date:'2025-01-01',kg:60},{date:TODAY,time:'15:00',kg:85}];
+  assert.equal(planStats(plan,outside,TODAY,now).targetDifferenceKg,null);
+  for (const [kg,difference] of [[69,-1],[70,0],[71.25,1.25]]) {
+    const body = [...outside,{date:TODAY,time:'08:00',kg}];
+    const stats = planStats(plan,body,TODAY,now);
+    assert.equal(stats.progress,null);
+    assert.equal(stats.targetDifferenceKg,difference);
+  }
 });
 
 test('calendar arithmetic handles leap days and year boundaries', () => {

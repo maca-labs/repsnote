@@ -26,11 +26,11 @@ jobs:
       - run: npm test
       - run: npx playwright install --with-deps --only-shell chromium
       - run: npm run test:e2e
-      - name: Version the offline cache
-        run: sed -i "s/__BUILD_REVISION__/$GITHUB_SHA/" dist/sw.js
+      - name: Prepare versioned application files
+        run: node scripts/prepare-pages.mjs dist "$RUNNER_TEMP/repnote-pages" "$GITHUB_SHA"
       - uses: actions/upload-pages-artifact@v4
         with:
-          path: dist
+          path: ${{ runner.temp }}/repnote-pages
 
   deploy:
     if: github.ref == 'refs/heads/main'

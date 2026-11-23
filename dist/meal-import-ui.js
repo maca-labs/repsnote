@@ -15,7 +15,7 @@ export function openMealImport({day,modal,openDialog,bindForm,h,toast,onSave}) {
 
   function start() {
     openDialog('AIで食事を一括取り込み', `<p>食べたものを入力して検索用の質問文をコピーし、検索できるAIに貼り付けてください。</p>
-      <form><div class="field"><label for="meal-query">食べたもの</label>
+      <form data-food-draft><div class="field"><label for="meal-query">食べたもの</label>
       <textarea id="meal-query" rows="3" maxlength="5000" placeholder="セブンイレブンの幕の内弁当、バナナ1本">${h(menu)}</textarea></div>
       <button type="button" class="button" data-meal-prompt>AIへの質問文をコピー</button>
       <div id="meal-prompt-fallback" hidden><div class="field"><label for="meal-prompt-text">コピーする質問文</label><textarea id="meal-prompt-text" readonly rows="4"></textarea></div></div>
@@ -74,7 +74,7 @@ export function openMealImport({day,modal,openDialog,bindForm,h,toast,onSave}) {
           </div></details></section>`;
     }
     openDialog('食事の取り込みを確認', `<p>${h(day)}の記録に追加します。量と推定値を確認し、不要な食品はチェックを外してください。</p>
-      <form novalidate id="meal-import-review">${items.length>1 ? `<div class="field"><label for="meal-group-bulk">チェックした食品の食事区分を一括変更</label>
+      <form novalidate data-food-draft id="meal-import-review">${items.length>1 ? `<div class="field"><label for="meal-group-bulk">チェックした食品の食事区分を一括変更</label>
         <select id="meal-group-bulk"><option value="">区分を選んで変更</option>${mealOptions('')}</select></div>` : ''}${items.map(row).join('')}
       <div class="info-box" id="meal-import-total" aria-live="polite"></div>${errorArea}<div class="modal-actions">
       <button type="button" class="button" data-meal-back>回答に戻る</button><button type="submit" class="button primary">選んだ食事を一括保存</button></div></form>`);

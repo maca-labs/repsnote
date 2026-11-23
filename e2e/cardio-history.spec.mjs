@@ -33,9 +33,15 @@ test('running history shows completed time and distance in lbs mode, including a
   await checkHistory();
 
   await entry.click();
+  const summary = page.locator('.metric-grid');
+  await expect(summary).toContainText(/35\s*分/);
+  await expect(summary).toContainText(/5\.25\s*km/);
+  await expect(summary).not.toContainText(/完了セット|ボリューム|lbs/);
   await page.getByRole('button',{name:'ランニング セット1の時間・距離などを編集'}).click();
   await dialog.getByLabel('距離（km）').fill('');
   await dialog.getByRole('button',{name:'保存する'}).click();
+  await expect(summary).toContainText(/35\s*分/);
+  await expect(summary).not.toContainText(/km|lbs/);
   await history.click();
   await expect(entry).toContainText(/\b35\s*分/);
   await expect(entry).not.toContainText(/\bkm\b|セット|\b(?:kg|lbs)\b/);

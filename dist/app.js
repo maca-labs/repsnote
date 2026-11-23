@@ -109,7 +109,8 @@ function refreshFromStorage(){
   // Replacing a focused textarea can dispatch change while removing the old node.
   refreshingNote=true;
   try{
-    if(modal.open)modal.close();
+    // Food forms retain their inputs and resolve the save against the latest records.
+    if(modal.open&&!modal.querySelector('form[data-food-draft]'))modal.close();
     render();
   }finally{refreshingNote=false;}
   if(focused){
@@ -120,15 +121,18 @@ function refreshFromStorage(){
   toast(storageProblem||'別のタブの変更を反映しました。最新の記録を確認してください');
 }
 // Check the stored revision inside a per-mode lock before modifying any records.
-function withRecordLock(edit,{allowRecovery=false,allowDayChange=false}={}){
+function withRecordLock(edit,{allowRecovery=false,allowDayChange=false,refreshBeforeEdit=false}={}){
   const key=storageKey(), selectedDay=day, current=state;
   function run(){
-    if(key!==storageKey()||(!allowDayChange&&selectedDay!==day)||current!==state){
+    if(key!==storageKey()||(!allowDayChange&&selectedDay!==day)||(!refreshBeforeEdit&&current!==state)){
       toast('表示が変わりました。最新の記録を確認してください');
       return;
     }
     try{
-      if(loadedRaw!==undefined&&localStorage.getItem(key)!==loadedRaw){refreshFromStorage();return;}
+      if(loadedRaw!==undefined&&localStorage.getItem(key)!==loadedRaw){
+        refreshFromStorage();
+        if(!refreshBeforeEdit)return;
+      }
     }catch{
       toast('保存領域を読み取れないため、変更を保存できません');
       return;
@@ -153,7 +157,7 @@ function save({restoring=false}={}){
     state=JSON.parse(committedState);
     undoState=null;
     storageProblem=loadBlocked?storageProblem:'変更を保存できませんでした。直前の記録を保持しています。'+(err.name==='Error'?' '+err.message:'');
-    if(modal.open)modal.close();
+    if(modal.open&&!modal.querySelector('form[data-food-draft]'))modal.close();
     render();
     toast(storageProblem);
     return false;
@@ -288,7 +292,34 @@ async function copyAiPrompt(){
     field.select();
   }
 }
-function renderWorkout(){const w=getWorkout(),stats=C.workoutStats(w),prs=C.records(state);return `<div class="layout"><section class="main-col">${dateStrip()}<div class="workout-hero"><div><div class="eyebrow">${day===today?'TODAY’S WORKOUT':'WORKOUT LOG'}</div><div class="hero-title">${h(w.title)}</div>${stats.exercises?`<p>${h(catalogGroups(w))}</p>`:''}</div><div class="hero-right">${btn('routines','メニューを選ぶ','list')}</div></div><div class="metric-grid"><div class="metric"><div class="label">${icon('check')}完了セット</div><div class="value">${stats.sets}<span>/ ${stats.total}</span></div></div><div class="metric"><div class="label">${icon('weight')}ボリューム</div><div class="value">${weight(stats.volume,unit(),0)}<span>${unit()}</span></div></div><div class="metric"><div class="label">${icon('dumbbell')}種目</div><div class="value">${stats.exercises}</div></div></div><div class="workout-toolbar"><h2>セットを記録</h2><div class="row">${btn('copy-previous','前回をコピー','copy')}</div></div>
+function workoutMetrics(workout, stats) {
+  const cardioEntries = workout.exercises.filter(entry => C.isCardioExercise(entry.exerciseId));
+  const cardio = C.completedCardioStats(workout);
+  const cardioTotal = cardioEntries.reduce((total, entry) => total + entry.sets.length, 0);
+  const strengthSets = stats.sets - cardio.sessions;
+  const strengthExercises = stats.exercises - cardioEntries.length;
+  const cells = [];
+  function add(label, iconName, value, suffix='') {
+    cells.push(`<div class="metric"><div class="label">${icon(iconName)}${h(label)}</div><div class="value">${h(value)}${suffix ? `<span>${h(suffix)}</span>` : ''}</div></div>`);
+  }
+  if (!cardioEntries.length || strengthSets > 0 || (strengthExercises > 0 && !cardio.sessions)) {
+    add(cardioEntries.length ? '筋トレ完了セット' : '完了セット', 'check', strengthSets, '/ '+(stats.total - cardioTotal));
+    add('ボリューム', 'weight', weight(stats.volume,unit(),0), unit());
+    add(cardioEntries.length ? '筋トレ種目' : '種目', 'dumbbell', strengthExercises);
+  }
+  if (cardioEntries.length && (cardio.sessions > 0 || !strengthSets)) {
+    add('有酸素完了', 'check', cardio.sessions, '/ '+cardioTotal+'回');
+    add('有酸素の時間', 'history', nf(cardio.minutes,2), '分');
+    if (cardio.distanceKm !== null) {
+      const label = cardio.distanceCount < cardio.sessions ? '距離（記録分）' : '距離';
+      add(label, 'chart', nf(cardio.distanceKm,2), 'km');
+    } else {
+      add('有酸素種目', 'list', cardioEntries.length);
+    }
+  }
+  return `<div class="metric-grid">${cells.join('')}</div>`;
+}
+function renderWorkout(){const w=getWorkout(),stats=C.workoutStats(w),prs=C.records(state);return `<div class="layout"><section class="main-col">${dateStrip()}<div class="workout-hero"><div><div class="eyebrow">${day===today?'TODAY’S WORKOUT':'WORKOUT LOG'}</div><div class="hero-title">${h(w.title)}</div>${stats.exercises?`<p>${h(catalogGroups(w))}</p>`:''}</div><div class="hero-right">${btn('routines','メニューを選ぶ','list')}</div></div>${workoutMetrics(w,stats)}<div class="workout-toolbar"><h2>セットを記録</h2><div class="row">${btn('copy-previous','前回をコピー','copy')}</div></div>
   ${w.exercises.length?w.exercises.map(e=>renderExercise(e,prs)).join(''):`<div class="panel empty">${icon('dumbbell')}<h3>この日のメニューは未登録です</h3><p>前回の記録や保存したメニューから、種目と入力値を呼び出せます。</p>${btn('routines','メニューからはじめる','list','primary')}</div>`}
   <button class="add-exercise" data-action="add-exercise">${icon('plus')}種目を追加</button><div class="panel session-note" style="margin-top:20px"><div class="between"><h3>トレーニングメモ</h3>${btn('save-routine','メニューを保存','save','ghost')}</div>${sessionNoteEditor(w.note)}<div class="save-note">${icon('shield')}${mode==='demo'?'サンプルモードで保存':'このブラウザに自動保存'} · 完了したセットを集計</div></div><div class="small" style="margin-top:14px">ボリューム＝完了したセットの入力重量 × 回数の合計。ダンベルは片手分、自重の体重分は含みません。</div></section><aside class="side-col">${nutritionPanel()}${highlightPanel(prs)}${weightPanel()}<div class="tip-box"><strong>${icon('copy')} セットの複製</strong>行のコピーアイコンで同じ内容のセットを複製。チェックを入れたセットだけが記録に加わります。</div></aside></div>`;}
 function sessionNoteEditor(saved){
@@ -449,7 +480,19 @@ function renderBodyEntry(entry){
     <div class="row"><strong>${nf(entry.kg)} <small style="display:inline">kg</small></strong>
     ${ib('edit-body',when+' '+nf(entry.kg)+'kgの記録を訂正','edit',bodyRecordAttrs(entry))}</div></div>`;
 }
-function renderBody(){const plan=state.plan,ps=C.planStats(plan,state.body,today),body=[...state.body].sort(C.compareBodyMeasurements).reverse(),latest=body.find(C.bodyMeasurementAsOf(today));return `<div class="layout"><section class="main-col"><div class="workout-hero"><div><div class="eyebrow">BODY LOG</div><div class="hero-title">${plan?(plan.targetWeight<plan.startWeight?'減量プラン':plan.targetWeight>plan.startWeight?'増量プラン':'体重維持プラン'):'体重の記録'}</div>${plan?`<p>${dateLabel(plan.startDate)} — ${dateLabel(plan.targetDate)}</p>`:''}</div></div><div class="metric-grid"><div class="metric"><div class="label">スタート</div><div class="value">${plan?nf(plan.startWeight):'—'}<span>kg</span></div></div><div class="metric"><div class="label">現在の体重</div><div class="value">${latest?nf(latest.kg):'—'}<span>kg</span></div></div><div class="metric"><div class="label">目標体重</div><div class="value">${plan?nf(plan.targetWeight):'—'}<span>kg</span></div></div></div><section class="panel"><div class="panel-heading"><h2>体重の推移</h2>${btn('add-body','体重を記録','plus','primary')}</div>${bodyChart()}<div class="chart-legend"><span>実際の記録</span><span>計画上のライン</span></div></section><div class="section-heading"><h2>からだの記録</h2><small>体重はkgで記録</small></div><section class="panel">${body.length?body.map(renderBodyEntry).join(''):`<div class="empty">${icon('chart')}<h3>変化を記録しよう</h3><p>体重と、任意で体脂肪率を記録できます。</p></div>`}</section></section><aside class="side-col"><section class="panel"><div class="panel-heading"><h2>ボディメイク計画</h2>${icon('target')}</div>${plan?`<div class="pill">${plan.targetWeight<plan.startWeight?'減量':plan.targetWeight>plan.startWeight?'増量':'体重維持'}プラン</div><div class="stat-line"><span>開始</span><strong>${dateLabel(plan.startDate)}</strong></div><div class="stat-line"><span>目標日</span><strong>${dateLabel(plan.targetDate)}</strong></div><div class="stat-line"><span>計画上のペース</span><strong>${ps.weekly>0?'+':''}${nf(ps.weekly,2)} kg/週</strong></div><div class="stat-line"><span>目標日まで</span><strong>${ps.remainingDays} 日</strong></div><div class="progress-row"><div class="progress-info"><span>目標への進み具合</span><strong>${nf(ps.progress,0)}%</strong></div><div class="progress-track"><div class="progress-fill" style="width:${ps.progress}%"></div></div></div><p class="mini-subtitle" style="margin-top:14px">計画線は開始と目標を結んだ目安です。体重の変化を予測・保証するものではありません。</p>`:'<p class="mini-subtitle">スタートと目標、期間を決めて、実際の記録と見比べられます。</p>'}${btn('edit-plan',plan?'計画・PFC目標を編集':'計画をつくる','edit','full')}${btn('share-plan','計画をシェア','share','full ghost')}</section>${nutritionPanel()}</aside></div>`;}
+function planProgressMetric(stats, showWeights=true) {
+  if (stats.progress !== null) return {label:'目標への進み具合', value:nf(stats.progress,0)+'%'};
+  if (!showWeights) return {label:'計画の目的', value:'体重維持'};
+  const delta = stats.targetDifferenceKg;
+  const value = delta === null ? '開始後は未測定' : (delta > 0 ? '+' : '')+nf(delta,2)+' kg';
+  return {label:'目標との差', value};
+}
+function renderPlanProgress(stats) {
+  const {label,value} = planProgressMetric(stats);
+  const bar = stats.progress === null ? '' : `<div class="progress-track"><div class="progress-fill" style="width:${stats.progress}%"></div></div>`;
+  return `<div class="progress-row"><div class="progress-info"><span>${label}</span><strong>${value}</strong></div>${bar}</div>`;
+}
+function renderBody(){const plan=state.plan,ps=C.planStats(plan,state.body,today),body=[...state.body].sort(C.compareBodyMeasurements).reverse(),latest=body.find(C.bodyMeasurementAsOf(today));return `<div class="layout"><section class="main-col"><div class="workout-hero"><div><div class="eyebrow">BODY LOG</div><div class="hero-title">${plan?(plan.targetWeight<plan.startWeight?'減量プラン':plan.targetWeight>plan.startWeight?'増量プラン':'体重維持プラン'):'体重の記録'}</div>${plan?`<p>${dateLabel(plan.startDate)} — ${dateLabel(plan.targetDate)}</p>`:''}</div></div><div class="metric-grid"><div class="metric"><div class="label">スタート</div><div class="value">${plan?nf(plan.startWeight):'—'}<span>kg</span></div></div><div class="metric"><div class="label">現在の体重</div><div class="value">${latest?nf(latest.kg):'—'}<span>kg</span></div></div><div class="metric"><div class="label">目標体重</div><div class="value">${plan?nf(plan.targetWeight):'—'}<span>kg</span></div></div></div><section class="panel"><div class="panel-heading"><h2>体重の推移</h2>${btn('add-body','体重を記録','plus','primary')}</div>${bodyChart()}<div class="chart-legend"><span>実際の記録</span><span>計画上のライン</span></div></section><div class="section-heading"><h2>からだの記録</h2><small>体重はkgで記録</small></div><section class="panel">${body.length?body.map(renderBodyEntry).join(''):`<div class="empty">${icon('chart')}<h3>変化を記録しよう</h3><p>体重と、任意で体脂肪率を記録できます。</p></div>`}</section></section><aside class="side-col"><section class="panel"><div class="panel-heading"><h2>ボディメイク計画</h2>${icon('target')}</div>${plan?`<div class="pill">${plan.targetWeight<plan.startWeight?'減量':plan.targetWeight>plan.startWeight?'増量':'体重維持'}プラン</div><div class="stat-line"><span>開始</span><strong>${dateLabel(plan.startDate)}</strong></div><div class="stat-line"><span>目標日</span><strong>${dateLabel(plan.targetDate)}</strong></div><div class="stat-line"><span>計画上のペース</span><strong>${ps.weekly>0?'+':''}${nf(ps.weekly,2)} kg/週</strong></div><div class="stat-line"><span>目標日まで</span><strong>${ps.remainingDays} 日</strong></div>${renderPlanProgress(ps)}<p class="mini-subtitle" style="margin-top:14px">計画線は開始と目標を結んだ目安です。体重の変化を予測・保証するものではありません。</p>`:'<p class="mini-subtitle">スタートと目標、期間を決めて、実際の記録と見比べられます。</p>'}${btn('edit-plan',plan?'計画・PFC目標を編集':'計画をつくる','edit','full')}${btn('share-plan','計画をシェア','share','full ghost')}</section>${nutritionPanel()}</aside></div>`;}
 function bodyChart(){
   const plan=state.plan, measurements=state.body.filter(b=>b.date<=today).sort(C.compareBodyMeasurements);
   if(!measurements.length&&!plan)return `<div class="empty">${icon('chart')}<p>体重を記録すると、ここにグラフが表示されます。</p></div>`;
@@ -480,7 +523,7 @@ function historyItem(date) {
   const cardio = C.completedCardioStats(workout);
   const strengthSets = stats.sets - cardio.sessions;
   const counts = [], metrics = [];
-  if (strengthSets || (!stats.sets && workout.exercises.some(entry => exercise(entry.exerciseId).load !== 'cardio'))) {
+  if (strengthSets || (!stats.sets && workout.exercises.some(entry => !C.isCardioExercise(entry.exerciseId)))) {
     counts.push(strengthSets+'セット完了');
     metrics.push(weight(stats.volume,unit(),0)+' '+unit());
   }
@@ -516,7 +559,7 @@ function bindForm(fn){
         const error=form.querySelector('#form-error');
         if(error)error.textContent=err.message;else toast(err.message);
       }
-    });
+    },{refreshBeforeEdit:form.hasAttribute?.('data-food-draft')});
   };
 }
 const need=(ok,message)=>{if(!ok)throw Error(message);};
@@ -687,7 +730,71 @@ function exerciseMenu(id){
     if(commit(start?'休憩を開始しました':'メモと休憩時間を保存しました')&&start)timerDialog(inst.exerciseId);
   });
 }
-function foodForm({entry=null,preset=null,meal='朝食',saveOnly=false}={}){const f=entry??preset??{name:'',basis:'serving',amount:1,meal,kcal:'',p:0,f:0,c:0};openDialog(saveOnly?'登録した食品を編集':entry?'食事を訂正する':'食事を記録',`<p>${saveOnly?'登録済みの食品だけを更新します。過去の食事記録は当時の数値を保持します。':`${dateLabel(day,true)}の食事。パッケージの栄養表示などを入力してください。`}</p><form id="food-entry" data-base-amount="${h(entry?.importInfo?.baseAmount??'')}" data-base-basis="${h(f.basis)}">${foodImportSource(entry)}${!saveOnly&&state.foods.length?`<div class="field" style="margin-bottom:18px"><label for="saved-food-select">いつもの食事から選ぶ</label><select id="saved-food-select"><option value="">新しく入力する</option>${state.foods.map(x=>`<option value="${h(x.id)}" ${preset?.id===x.id?'selected':''}>${h(x.name)}</option>`).join('')}</select></div>`:''}<div class="form-grid">${inputField('name','食品・メニュー名',f.name,'required maxlength="200"','full')}${!saveOnly?selectField('meal','食事',['朝食','昼食','夕食','間食'],f.meal??meal):''}${selectField('basis','栄養表示の基準',[['serving','1食分あたり'],['100g','100gあたり']],f.basis)}${!saveOnly?inputField('amount',f.basis==='100g'?'食べた量（g）':'食べた量（食分）',f.amount??(f.basis==='100g'?100:1),'type="number" min="0.01" max="10000" step="any" required inputmode="decimal"'):''}${inputField('kcal','基準あたりのカロリー（kcal）',f.kcal,'type="number" min="0" max="100000" step="any" required inputmode="decimal"')}</div><div class="form-grid three" style="margin-top:17px">${['p','f','c'].map((k,i)=>inputField(k,['P たんぱく質（g）','F 脂質（g）','C 炭水化物（g）'][i],f[k],'type="number" min="0" max="100000" step="any" required inputmode="decimal"')).join('')}</div>${saveOnly?'':`<div class="food-ratios"><span class="small" data-portion-label></span><div role="group" aria-label="食べた量の倍率">${[.5,1,1.5,2].map(r=>btn('food-ratio',r+'倍','','',`data-food-ratio="${r}"`)).join('')}</div></div>`}<div class="info-box" id="food-calculation"></div>${!entry&&!saveOnly?'<label class="checkbox-row"><input type="checkbox" name="saveFood" '+(!preset?'checked':'')+'>いつもの食事に登録する</label>':''}${formEnd(saveOnly?'食品を更新':'食事を保存',entry?btn('delete-food','削除','trash','danger',`data-id="${h(entry.id)}"`):'')}</form>`);updateFoodCalculation();bindForm(fd=>{const data={name:String(fd.get('name')).trim(),basis:fd.get('basis'),kcal:number(fd,'kcal'),p:number(fd,'p'),f:number(fd,'f'),c:number(fd,'c')};need(data.name,'食品名を入力してください。');if(saveOnly){const item=state.foods.find(x=>x.id===preset.id);Object.assign(item,data);}else{const record={...data,id:entry?.id??C.uid(),amount:number(fd,'amount',.01,10000),meal:fd.get('meal')};if(entry?.importInfo&&['name','basis','kcal','p','f','c'].every(k=>entry[k]===data[k])&&Number.isFinite(entry.importInfo.baseAmount)&&entry.importInfo.baseAmount>0){record.importInfo={...entry.importInfo,multiplier:record.amount/entry.importInfo.baseAmount};}state.meals[day]??=[];if(entry)state.meals[day]=state.meals[day].map(m=>m.id===entry.id?record:m);else state.meals[day].push(record);if(fd.has('saveFood'))state.foods.push({...data,id:C.uid()});}modal.close();commit(saveOnly?'食品を更新しました':'食事を保存しました');});}
+const newFoodValues = {name:'',basis:'serving',kcal:'',p:0,f:0,c:0};
+function applyFoodPreset(select){
+  const form=select.form;
+  const preset=state.foods.find(food=>food.id===select.value);
+  if(select.value&&!preset){
+    select.value='';
+    toast('この登録食品は削除されました。新しく入力できます');
+  }
+  const values=preset??newFoodValues;
+  for(const key of ['name','basis','kcal','p','f','c'])form.elements[key].value=values[key];
+  form.dataset.baseAmount='';
+  form.dataset.baseBasis=values.basis;
+  form.elements.amount.value=values.basis==='100g'?100:1;
+  form.querySelector('label[for="field-amount"]').textContent=values.basis==='100g'?'食べた量（g）':'食べた量（食分）';
+  if(form.elements.saveFood)form.elements.saveFood.checked=!preset;
+  const source=form.querySelector('.food-source');
+  if(source)source.hidden=true;
+  updateFoodCalculation();
+}
+function confirmFoodEdit(form,current,action){
+  if(!form.dataset.originalFood || form.dataset.originalFood===JSON.stringify(current))return true;
+  const message=current
+    ? 'この食品は別のタブで変更されています。'+(action==='delete'?'最新の記録を削除しますか？':'入力中の内容で最新の記録を上書きしますか？')
+    : 'この食品は別のタブで削除されています。入力中の内容を新しく保存しますか？';
+  if(!window.confirm(message))return false;
+  if(localStorage.getItem(storageKey())!==loadedRaw){
+    refreshFromStorage();
+    toast('確認中に記録が変わりました。内容を確認してもう一度お試しください');
+    return false;
+  }
+  return true;
+}
+function foodForm({entry=null,preset=null,meal='朝食',saveOnly=false}={}){
+  const targetDay=day;
+  const f=entry??preset??newFoodValues;
+  openDialog(saveOnly?'登録した食品を編集':entry?'食事を訂正する':'食事を記録',`<p>${saveOnly?'登録済みの食品だけを更新します。過去の食事記録は当時の数値を保持します。':`${dateLabel(targetDay,true)}の食事。パッケージの栄養表示などを入力してください。`}</p><form id="food-entry" data-food-draft data-base-amount="${h(entry?.importInfo?.baseAmount??'')}" data-base-basis="${h(f.basis)}">${foodImportSource(entry)}${!saveOnly&&state.foods.length?`<div class="field" style="margin-bottom:18px"><label for="saved-food-select">いつもの食事から選ぶ</label><select id="saved-food-select"><option value="">新しく入力する</option>${state.foods.map(x=>`<option value="${h(x.id)}" ${preset?.id===x.id?'selected':''}>${h(x.name)}</option>`).join('')}</select></div>`:''}<div class="form-grid">${inputField('name','食品・メニュー名',f.name,'required maxlength="200"','full')}${!saveOnly?selectField('meal','食事',['朝食','昼食','夕食','間食'],f.meal??meal):''}${selectField('basis','栄養表示の基準',[['serving','1食分あたり'],['100g','100gあたり']],f.basis)}${!saveOnly?inputField('amount',f.basis==='100g'?'食べた量（g）':'食べた量（食分）',f.amount??(f.basis==='100g'?100:1),'type="number" min="0.01" max="10000" step="any" required inputmode="decimal"'):''}${inputField('kcal','基準あたりのカロリー（kcal）',f.kcal,'type="number" min="0" max="100000" step="any" required inputmode="decimal"')}</div><div class="form-grid three" style="margin-top:17px">${['p','f','c'].map((k,i)=>inputField(k,['P たんぱく質（g）','F 脂質（g）','C 炭水化物（g）'][i],f[k],'type="number" min="0" max="100000" step="any" required inputmode="decimal"')).join('')}</div>${saveOnly?'':`<div class="food-ratios"><span class="small" data-portion-label></span><div role="group" aria-label="食べた量の倍率">${[.5,1,1.5,2].map(r=>btn('food-ratio',r+'倍','','',`data-food-ratio="${r}"`)).join('')}</div></div>`}<div class="info-box" id="food-calculation"></div>${!entry&&!saveOnly?'<label class="checkbox-row"><input type="checkbox" name="saveFood" '+(!preset?'checked':'')+'>いつもの食事に登録する</label>':''}${formEnd(saveOnly?'食品を更新':'食事を保存',entry?btn('delete-food','削除','trash','danger',`data-id="${h(entry.id)}"`):'')}</form>`);
+  const form=modal.querySelector('#food-entry');
+  const original=entry??(saveOnly?preset:null);
+  if(original)form.dataset.originalFood=JSON.stringify(original);
+  updateFoodCalculation();
+  bindForm(fd=>{
+    const data={name:String(fd.get('name')).trim(),basis:fd.get('basis'),
+      kcal:number(fd,'kcal'),p:number(fd,'p'),f:number(fd,'f'),c:number(fd,'c')};
+    need(data.name,'食品名を入力してください。');
+    if(saveOnly){
+      const saved=state.foods.find(food=>food.id===preset.id);
+      if(!confirmFoodEdit(form,saved,'save'))return;
+      if(saved)Object.assign(saved,data);
+      else state.foods.push({...data,id:C.uid()});
+    }else{
+      const amount=number(fd,'amount',.01,10000);
+      const meals=state.meals[targetDay]??[];
+      const existing=entry&&meals.find(item=>item.id===entry.id);
+      if(!confirmFoodEdit(form,existing,'save'))return;
+      const record={...data,id:existing?.id??C.uid(),amount,meal:fd.get('meal')};
+      if(entry?.importInfo&&['name','basis','kcal','p','f','c'].every(k=>entry[k]===data[k])
+          &&Number.isFinite(entry.importInfo.baseAmount)&&entry.importInfo.baseAmount>0){
+        record.importInfo={...entry.importInfo,multiplier:amount/entry.importInfo.baseAmount};
+      }
+      state.meals[targetDay]=existing?meals.map(item=>item.id===existing.id?record:item):[...meals,record];
+      if(fd.has('saveFood'))state.foods.push({...data,id:C.uid()});
+    }
+    if(commit(saveOnly?'食品を更新しました':'食事を保存しました'))modal.close();
+  });
+}
 function foodImportSource(entry){
   const info=entry?.importInfo;
   if(!info)return '';
@@ -952,7 +1059,8 @@ function shareContentText(report) {
     lines = [`食事記録 ${nf(t.kcal,0)}kcal`, `P ${nf(t.p)}g / F ${nf(t.f)}g / C ${nf(t.c)}g`];
   } else {
     const p = state.plan, ps = C.planStats(p,state.body,today);
-    lines = p ? [`ボディメイク計画｜目標への進み具合 ${nf(ps.progress,0)}%`,
+    const metric = ps && planProgressMetric(ps,sharePrefs.weights);
+    lines = p ? [`ボディメイク計画｜${metric.label} ${metric.value}`,
       ...(sharePrefs.weights ? [`開始 ${nf(p.startWeight)}kg → 目標 ${nf(p.targetWeight)}kg`, currentWeightLabel(state.body,today)] : []),
       ...(sharePrefs.date ? [`目標日 ${p.targetDate}`] : []), ...planNutritionLines(p)] : ['ボディメイク計画をつくろう'];
   }
@@ -1095,13 +1203,16 @@ function drawShare(resetPost=false) {
       label('計画は未設定です',left,y+60,34,secondary);
     } else {
       const stats = C.planStats(p,state.body,today);
-      metric(nf(stats.progress,0)+'%', '目標への進み具合', left, y+64, width, 108);
+      const progress = planProgressMetric(stats,sharePrefs.weights);
+      metric(progress.value, progress.label, left, y+64, width, 108);
       y += 148+Math.round(room*.075);
-      ctx.fillStyle = rule;
-      ctx.fillRect(left,y,width,13);
-      ctx.fillStyle = ink;
-      ctx.fillRect(left,y,width*stats.progress/100,13);
-      y += 60+Math.round(room*.05);
+      if (stats.progress !== null) {
+        ctx.fillStyle = rule;
+        ctx.fillRect(left,y,width,13);
+        ctx.fillStyle = ink;
+        ctx.fillRect(left,y,width*stats.progress/100,13);
+        y += 60+Math.round(room*.05);
+      }
       const rows = [];
       if (sharePrefs.weights) {
         rows.push('開始 '+nf(p.startWeight)+' kg     目標 '+nf(p.targetWeight)+' kg', currentWeightLabel(state.body,today));
@@ -1259,7 +1370,16 @@ async function handleAction(d){try{switch(d.action){
   case 'saved-food':foodForm({preset:state.foods.find(f=>f.id===d.id)});break;
   case 'copy-food':{const f=state.meals[day]?.find(m=>m.id===d.id);if(f)undoable(()=>state.meals[day].push({...f,id:C.uid()}),'食事をコピーしました');break;}
   case 'copy-food-day':{const ms=state.meals[C.shiftDay(day,-1)]??[];if(!ms.length){toast('前日の食事記録がありません');break;}undoable(()=>{state.meals[day]??=[];state.meals[day].push(...ms.map(m=>({...m,id:C.uid()})));},'前日の食事を追加しました');break;}
-  case 'delete-food':undoable(()=>{state.meals[day]=state.meals[day].filter(m=>m.id!==d.id);},'食事を削除しました');modal.close();break;
+  case 'delete-food':{
+    const form=modal.querySelector('#food-entry');
+    if(!modal.open||!form)break;
+    const current=state.meals[day]?.find(item=>item.id===d.id);
+    if(!current){modal.close();toast('この食事はすでに削除されています');break;}
+    if(confirmFoodEdit(form,current,'delete')&&undoable(()=>{
+      state.meals[day]=state.meals[day].filter(item=>item.id!==d.id);
+    },'食事を削除しました'))modal.close();
+    break;
+  }
   case 'manage-foods':manageFoods();break;
   case 'edit-saved-food':foodForm({preset:state.foods.find(f=>f.id===d.id),saveOnly:true});break;
   case 'delete-saved-food':undoable(()=>{state.foods=state.foods.filter(f=>f.id!==d.id);},'登録した食品を削除しました');manageFoods();break;
@@ -1372,7 +1492,7 @@ function handleChange(el){const d=el.dataset;try{
   }
   if(d.change==='setting-timer'){state.settings.timerSeconds=Number(el.value);save();}
   if(el.id==='import-file'&&el.files?.[0])return importFile(el.files[0]);
-  if(el.id==='saved-food-select'&&el.value){const f=state.foods.find(f=>f.id===el.value);if(f){const form=modal.querySelector('form');for(const k of ['name','kcal','p','f','c','basis'])form.elements[k].value=f[k];form.dataset.baseAmount='';form.elements.amount.value=f.basis==='100g'?100:1;form.querySelector('label[for="field-amount"]').textContent=f.basis==='100g'?'食べた量（g）':'食べた量（食分）';if(form.elements.saveFood)form.elements.saveFood.checked=false;updateFoodCalculation();}}
+  if(el.id==='saved-food-select')applyFoodPreset(el);
   if(el.name==='basis'&&modal.querySelector('#food-calculation')){const amount=modal.querySelector('[name="amount"]');if(amount){amount.value=el.value==='100g'?100:1;modal.querySelector('label[for="field-amount"]').textContent=el.value==='100g'?'食べた量（g）':'食べた量（食分）';}updateFoodCalculation();}
   if(el.name?.startsWith('share-'))updateSharePreferences();
 }catch(err){toast(err.message);}}

@@ -22,12 +22,25 @@ test('the launcher opens the repository subpath and its PNGs match their declare
 test('the service worker installs a complete static snapshot and ignores other apps on the same origin', async () => {
   const events = {};
   let cached;
-  const cache = {addAll: requests => { cached = Array.from(requests, r => r.url); }};
+  const snapshots = new Map();
+  const caches = {async open(name) {
+    if (!snapshots.has(name)) {
+      const entries = new Map();
+      snapshots.set(name,{
+        async addAll(requests) {
+          cached = Array.from(requests,r=>r.url);
+          for (const url of cached) entries.set(url,new Response(url));
+        },
+        match:key=>entries.get(key), put:(key,value)=>entries.set(key,value),
+      });
+    }
+    return snapshots.get(name);
+  }};
   const self = {
     registration:{scope}, addEventListener:(name,fn)=>{events[name]=fn;}, skipWaiting:()=>{},
   };
   const source = await readFile(new URL('sw.js', dist), 'utf8');
-  vm.runInNewContext(source, {self, URL, Request, caches:{open:async()=>cache}});
+  vm.runInNewContext(source, {self, URL, Request, caches});
   let installed;
   events.install({waitUntil: promise=>{installed=promise;}});
   await installed;

@@ -87,6 +87,23 @@ test('history summarizes completed cardio time and recorded distances separately
   assert.doesNotMatch(row(lifting),/5分|1 km/);
   assert.match(row(drafts),/未完了/);
   assert.doesNotMatch(row(drafts),/20\s*分|3\s*km|lbs|セット/);
+
+  async function openSummary(date) {
+    await ui.click('history-date',{date});
+    return ui.app.innerHTML.split('class="metric-grid"')[1].split('class="workout-toolbar"')[0].replace(/<[^>]*>/g,'');
+  }
+  const runSummary=await openSummary(running);
+  assert.match(runSummary,/30\.25分/);
+  assert.match(runSummary,/3\.6km/);
+  assert.doesNotMatch(runSummary,/完了セット|ボリューム|lbs/);
+  const mixedSummary=await openSummary(mixed);
+  assert.match(mixedSummary,/筋トレ完了セット1\/ 1/);
+  assert.match(mixedSummary,/110lbs/);
+  assert.match(mixedSummary,/20分/);
+  assert.match(mixedSummary,/2km/);
+  assert.match(mixedSummary,/記録分/);
+  assert.match(await openSummary(zeroDistance),/0km/);
+  assert.doesNotMatch(await openSummary(noDistance),/km/);
 });
 
 test('sharing a plan keeps edited or empty post text through image changes, copying and native sharing', async t=>{

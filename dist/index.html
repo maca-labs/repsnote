@@ -17,6 +17,30 @@
   <div id="toast" role="status" aria-live="polite"></div>
   <div id="celebration" role="status" aria-live="polite"></div>
   <noscript>REPS NOTEを使うにはJavaScriptを有効にしてください。</noscript>
-  <script type="module" src="./app.js"></script>
+  <script>
+    (() => {
+      let failed = false, changed = false;
+      const workers = navigator.serviceWorker;
+      if (workers?.controller) {
+        workers.addEventListener('controllerchange', () => {
+          changed = true;
+          if (failed) location.reload();
+        });
+        // Even if the module graph fails, a previously installed app can recover its complete cache.
+        workers.register('./sw.js').catch(() => {});
+      }
+      document.addEventListener('error', event => {
+        if (event.target.id !== 'app-module') return;
+        failed = true;
+        if (changed) { location.reload(); return; }
+        const app = document.getElementById('app');
+        const retry = document.createElement('button');
+        retry.textContent = '再読み込み';
+        retry.onclick = () => location.reload();
+        app.replaceChildren('起動に必要なファイルを取得できませんでした。', retry);
+      }, true);
+    })();
+  </script>
+  <script type="module" src="./app.js" id="app-module"></script>
 </body>
 </html>
