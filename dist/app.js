@@ -549,17 +549,33 @@ const inputField=(name,label,value='',attrs='',cls='')=>`<div class="field ${cls
 const selectField=(name,label,values,value,cls='')=>`<div class="field ${cls}"><label for="field-${name}">${h(label)}</label><select id="field-${name}" name="${name}">${values.map(v=>{const [id,text]=Array.isArray(v)?v:[v,v];return `<option value="${h(id)}" ${id===value?'selected':''}>${h(text)}</option>`;}).join('')}</select></div>`;
 const formEnd=(label='保存する',extra='')=>`<div class="form-error" id="form-error" role="alert"></div><div class="modal-actions">${extra}${btn('close','キャンセル')}<button type="submit" class="button primary">${h(label)}</button></div>`;
 function bindForm(fn){
+  let pending=false;
   modal.onsubmit=e=>{
     e.preventDefault();
+    if(pending)return;
     const form=e.target, data=new FormData(form);
     if(state.settings.timerSound && (form.id==='rest-timer-form' || e.submitter?.hasAttribute('data-rest-start')))void timerSound.arm();
-    return withRecordLock(()=>{
+    const request=withRecordLock(()=>{
       if(!modal.open||!modal.contains(form))return;
       try{fn(data,e.submitter);}catch(err){
         const error=form.querySelector('#form-error');
         if(error)error.textContent=err.message;else toast(err.message);
       }
     },{refreshBeforeEdit:form.hasAttribute?.('data-food-draft')});
+    if(!request?.finally)return request;
+    // An external tab can hold the lock. Reloading now would discard this submitted form.
+    pending=true;
+    const guard=new AbortController();
+    window.addEventListener('beforeunload',event=>{
+      event.preventDefault();
+      event.returnValue=true;
+    },{signal:guard.signal});
+    if(e.submitter)e.submitter.disabled=true;
+    return request.finally(()=>{
+      guard.abort();
+      pending=false;
+      if(e.submitter)e.submitter.disabled=false;
+    });
   };
 }
 const need=(ok,message)=>{if(!ok)throw Error(message);};

@@ -3,10 +3,42 @@ import { expect, test } from '@playwright/test';
 async function personal(page) {
   await page.goto('./');
   await page.getByRole('button',{name:'自分の記録をはじめる'}).click();
+  await expect(page.locator('.demo-banner')).toHaveCount(0);
 }
 const openFood = page => page.locator('[data-action="nav"][data-view="food"]:visible').first().click();
 const form = page => page.locator('#food-entry');
 const field = (page,name) => form(page).locator('[name="'+name+'"]');
+
+test('reloading a submitted meal while another tab holds the record lock only proceeds after the user chooses', async ({page,context}) => {
+  await personal(page);
+  const other=await context.newPage();
+  await other.goto('./');
+  await openFood(page);
+  await page.getByRole('button',{name:'食事を追加',exact:true}).click();
+  await field(page,'name').fill('保存待ちの食事');
+  await field(page,'kcal').fill('210');
+  await other.evaluate(()=>new Promise(ready=>{
+    navigator.locks.request('repnote:v1:real',()=>new Promise(release=>{
+      window.releaseRecordLock=release;
+      ready();
+    }));
+  }));
+  await form(page).getByRole('button',{name:'食事を保存'}).click();
+  const guard=page.waitForEvent('dialog',{timeout:5000}).then(async dialog=>{
+    const type=dialog.type();
+    await dialog.dismiss();
+    expect(type).toBe('beforeunload');
+  });
+  await Promise.all([guard,page.evaluate(()=>location.reload())]);
+  await expect(field(page,'name')).toHaveValue('保存待ちの食事');
+  await other.evaluate(()=>window.releaseRecordLock());
+  await expect(page.locator('#modal')).toBeHidden();
+  await expect(page.locator('.food-value')).toHaveText('210 kcal');
+  // A completed save no longer guards navigation.
+  await expect.poll(()=>page.evaluate(()=>window.dispatchEvent(new Event('beforeunload',{cancelable:true})))).toBe(true);
+  await page.reload(); await openFood(page);
+  await expect(page.locator('.food-value')).toHaveText(['210 kcal']);
+});
 
 test('a new meal draft survives a second tab saving a note and both records persist', async ({page,context}) => {
   await personal(page);
@@ -66,6 +98,7 @@ test('switching a doubled saved food back to new clears the preset before a seco
   await field(page,'name').fill('バナナ');
   await field(page,'kcal').fill('90');
   await form(page).getByRole('button',{name:'食事を保存'}).click();
+  await expect(page.locator('#modal')).toBeHidden();
   await page.reload();
   await openFood(page);
   await expect(page.locator('.food-value')).toHaveText(['240 kcal','90 kcal']);
@@ -104,6 +137,7 @@ test('an external save preserves both steps of bulk meal import and appends to t
   await expect(page.locator('#meal-type-0')).toHaveValue('間食');
   await expect(page.locator('[name="include-1"]')).not.toBeChecked();
   await page.getByRole('button',{name:'選んだ食事を一括保存'}).click();
+  await expect(page.locator('#modal')).toBeHidden();
   await page.reload(); await openFood(page);
   await expect(page.locator('.food-value')).toHaveText(['220 kcal','180 kcal']);
 });
@@ -115,6 +149,7 @@ test('a stale food editor keeps its draft and asks before replacing a correction
   await field(page,'name').fill('バナナ');
   await field(page,'kcal').fill('90');
   await form(page).getByRole('button',{name:'食事を保存'}).click();
+  await expect(page.locator('.food-value')).toHaveText('90 kcal');
   const other = await context.newPage();
   await other.goto('./'); await openFood(other);
   const edit = p => p.locator('.food-item [data-action="edit-food"]').click();
