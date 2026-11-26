@@ -1624,6 +1624,14 @@ a {
   border: 1px solid currentColor;
 }
 
+.day-marks .body-dot {
+  border-radius: 0;
+}
+
+.calendar-record-links + section {
+  margin-top: 20px;
+}
+
 .history-calendar-footer {
   display: flex;
   align-items: center;

@@ -349,14 +349,14 @@ function options(values,current,formatter=n=>String(n),extra=''){return values.m
 function weightOption({kg, value}, selectedKg) {
   return `<option value="${value}" data-kg="${kg}" ${kg === selectedKg ? 'selected' : ''}>${nf(value, 2)}</option>`;
 }
-function weightOptions(set, last, ex) {
+function weightOptions(set, previousSets, ex) {
   const unit = C.exerciseUnit(state, ex.id);
   const near = weightPresets(ex, unit, state.settings.weightStep, set.kg).filter(preset => preset.kg !== set.kg);
   near.push({kg:set.kg, value:C.fromKg(set.kg, unit)});
   near.sort((a,b) => a.kg-b.kg);
   const used = new Set(near.map(preset => preset.kg));
   const recent = [];
-  for (const {kg} of last?.sets ?? []) {
+  for (const {kg} of previousSets) {
     if (!used.has(kg)) {
       recent.push({kg, value:C.fromKg(kg, unit)});
       used.add(kg);
@@ -451,7 +451,20 @@ function focusSet(id, field = 'set-weight', reveal = false) {
   el?.focus({preventScroll:true});
   if (reveal) el?.scrollIntoView({block:'nearest'});
 }
-function renderStrengthTable(inst,ex,last,prs,u){return `<div class="set-table"><div class="set-grid labels"><span>SET</span><span class="previous">前回</span><div class="weight-heading"><span>重量</span>${unitSwitch(`${ex.name}の重量表示単位`,inst.id,u)}</div><span>回数</span><span>完了</span><span>複製</span><span></span><span>削除</span></div>${inst.sets.map((s,i)=>{const prev=last?.sets[i]??last?.sets.at(-1),isPR=prs[ex.id]?.id===s.id;return `<div class="set-grid set-row ${s.completed?'done':''}"><div class="set-num">${s.kind==='warmup'?'W':i+1}${isPR?icon('crown','tiny-crown'):s.assisted?'<span class="small">補</span>':''}</div><div class="previous ${prev?'has-previous':''}">${prev?`<span class="previous-label">前回 </span>${weight(prev.kg,u)} × ${prev.reps}`:'—'}</div><select aria-label="${h(ex.name)} セット${i+1}の重量（${u}）" data-change="set-weight" data-exercise="${h(ex.id)}" data-load="${ex.load}" data-id="${h(s.id)}">${weightOptions(s,last,ex)}</select><select aria-label="${h(ex.name)} セット${i+1}の回数" data-change="set-reps" data-id="${h(s.id)}">${options([...new Set([...Array.from({length:30},(_,i)=>i+1),40,50,60,100,s.reps])].sort((a,b)=>a-b),s.reps,n=>n,'<option value="custom">直接入力…</option>')}</select><button class="complete-check ${s.completed?'checked':''}" data-action="complete-set" data-id="${h(s.id)}" data-exercise="${h(ex.id)}" aria-label="${h(ex.name)} セット${i+1}を${s.completed?'未完了にする':'完了にする'}" aria-pressed="${s.completed}">${icon('check')}</button>${ib('copy-set',`${ex.name} セット${i+1}をコピー`,'copy',`data-id="${h(s.id)}" data-instance="${h(inst.id)}"`)}${ib('edit-set',`${ex.name} セット${i+1}の詳細を編集`,'more',`data-id="${h(s.id)}"`)}${ib('delete-set',`${ex.name} セット${i+1}を削除`,'trash',`data-id="${h(s.id)}" data-date="${day}"`)}</div>`;}).join('')}</div>`;}
+function renderStrengthTable(inst,ex,last,prs,u){
+  const previousSets = last?.sets ?? [];
+  const previousByKind = {
+    warmup: previousSets.filter(set => set.kind === 'warmup'),
+    work: previousSets.filter(set => set.kind === 'work'),
+  };
+  const nextIndex = {warmup:0, work:0};
+  return `<div class="set-table"><div class="set-grid labels"><span>SET</span><span class="previous">前回</span><div class="weight-heading"><span>重量</span>${unitSwitch(`${ex.name}の重量表示単位`,inst.id,u)}</div><span>回数</span><span>完了</span><span>複製</span><span></span><span>削除</span></div>${inst.sets.map((s,i)=>{
+    const sameKind = previousByKind[s.kind];
+    const prev = sameKind[nextIndex[s.kind]++];
+    const isPR = prs[ex.id]?.id === s.id;
+    return `<div class="set-grid set-row ${s.completed?'done':''}"><div class="set-num">${s.kind==='warmup'?'W':i+1}${isPR?icon('crown','tiny-crown'):s.assisted?'<span class="small">補</span>':''}</div><div class="previous ${last?'has-previous':''}">${last?'<span class="previous-label">前回 </span>':''}${prev?`${weight(prev.kg,u)} × ${prev.reps}`:'—'}</div><select aria-label="${h(ex.name)} セット${i+1}の重量（${u}）" data-change="set-weight" data-exercise="${h(ex.id)}" data-load="${ex.load}" data-id="${h(s.id)}">${weightOptions(s,sameKind,ex)}</select><select aria-label="${h(ex.name)} セット${i+1}の回数" data-change="set-reps" data-id="${h(s.id)}">${options([...new Set([...Array.from({length:30},(_,i)=>i+1),40,50,60,100,s.reps])].sort((a,b)=>a-b),s.reps,n=>n,'<option value="custom">直接入力…</option>')}</select><button class="complete-check ${s.completed?'checked':''}" data-action="complete-set" data-id="${h(s.id)}" data-exercise="${h(ex.id)}" aria-label="${h(ex.name)} セット${i+1}を${s.completed?'未完了にする':'完了にする'}" aria-pressed="${s.completed}">${icon('check')}</button>${ib('copy-set',`${ex.name} セット${i+1}をコピー`,'copy',`data-id="${h(s.id)}" data-instance="${h(inst.id)}"`)}${ib('edit-set',`${ex.name} セット${i+1}の詳細を編集`,'more',`data-id="${h(s.id)}"`)}${ib('delete-set',`${ex.name} セット${i+1}を削除`,'trash',`data-id="${h(s.id)}" data-date="${day}"`)}</div>`;
+  }).join('')}</div>`;
+}
 function renderExercise(inst,prs){const ex=exercise(inst.exerciseId),last=C.lastExercise(state,ex.id,day),u=exerciseUnit(ex.id);return `<article class="exercise-card" id="exercise-${h(inst.id)}"><div class="exercise-head"><div class="row"><div class="badge-icon">${icon(ex.load==='cardio'?'heart':'dumbbell')}</div><div><div class="exercise-title">${h(ex.name)}</div><div class="exercise-sub">${h(ex.group)} · ${h(ex.equipment)} · ${h(loadLabel(ex))}</div></div></div><div class="exercise-tools">${ib('favorite',state.favorites.includes(ex.id)?'お気に入りから外す':'お気に入りに追加','star',`data-id="${h(ex.id)}"`,state.favorites.includes(ex.id)?'active':'')}${ib('exercise-menu','種目の編集・削除','more',`data-id="${h(inst.id)}"`)}</div></div>${ex.load==='cardio'?renderCardioTable(inst,ex,last):renderStrengthTable(inst,ex,last,prs,u)}<div class="exercise-footer">
   ${ib('add-set',ex.name+'のセットを1つ追加','plus',`data-id="${h(inst.id)}"`)}
   <button type="button" class="icon-button" data-action="add-three-sets" data-id="${h(inst.id)}" title="最後のセットを3つコピーして追加" aria-label="${h(ex.name)}の最後のセットを3つコピーして追加" ${inst.sets.length?'':'disabled'}>
@@ -545,9 +558,55 @@ function historyItem(date) {
       <small>${dateLabel(date,true)} · ${stats.exercises}種目 / ${counts.join('・') || '未完了'}</small></div>
     <div class="history-score">${metrics.map(value=>`<span>${value}</span>`).join(' ')}</div></button>`;
 }
+function hasWorkoutRecord(date){
+  const workout=state.workouts[date];
+  return Boolean(workout?.exercises.length || workout?.note.trim());
+}
+function renderCalendarDay(date,bodyCount){
+  const hasWorkout=hasWorkoutRecord(date),foodCount=state.meals[date]?.length??0;
+  const labels=[];
+  if(hasWorkout)labels.push(`トレーニング、完了した記録${C.workoutStats(state.workouts[date]).sets}件`);
+  if(foodCount)labels.push(`食事${foodCount}件`);
+  if(bodyCount)labels.push(`体重${bodyCount}件`);
+  return `<button class="calendar-day ${date.slice(0,7)===month?'':'outside'} ${date===day?'active':''}"
+    data-action="calendar-date" data-date="${date}" aria-label="${dateLabel(date,true)}、${labels.join('、')||'記録なし'}">
+    <span>${C.parseDay(date).getDate()}</span><span class="day-marks" aria-hidden="true">
+      ${hasWorkout?'<span></span>':''}${foodCount?'<span class="food-dot"></span>':''}${bodyCount?'<span class="body-dot"></span>':''}
+    </span></button>`;
+}
+function openHistoryRecord(date,recordView){
+  if(modal.open)modal.close();
+  day=date;
+  view=recordView;
+  render();
+  window.scrollTo({top:0,behavior:'instant'});
+}
+function openCalendarDay(date){
+  const hasWorkout=hasWorkoutRecord(date),foodCount=state.meals[date]?.length??0;
+  const measurements=state.body.filter(entry=>entry.date===date);
+  if(!measurements.length && !(hasWorkout && foodCount)){
+    openHistoryRecord(date,foodCount?'food':'workout');
+    return;
+  }
+  day=date;
+  render();
+  app.querySelector(`.calendar-day[data-date="${date}"]`)?.focus({preventScroll:true});
+  const attrs=`data-date="${date}"`;
+  const workoutLink=hasWorkout?btn('history-date','トレーニングを見る','dumbbell','',attrs):'';
+  const foodLink=foodCount?btn('history-date',`食事を見る（${foodCount}件）`,'food','',attrs+' data-view="food"'):'';
+  openDialog(dateLabel(date,true)+'の記録',`
+    ${workoutLink||foodLink?`<div class="menu-grid calendar-record-links">${workoutLink}${foodLink}</div>`:''}
+    ${measurements.length?`<section><h3>からだの記録</h3>${measurements.sort(C.compareBodyMeasurements).reverse().map(renderBodyEntry).join('')}</section>`:''}`);
+}
 function renderHistory(){const start=`${month}-01`,startDow=C.parseDay(start).getDay(),gridStart=C.shiftDay(start,-((startDow+6)%7));const dates=Object.keys(state.workouts).filter(d=>state.workouts[d].exercises.length).sort().reverse();
   const summary=C.monthlySummary(state,month);
-  return `<div class="layout"><section class="main-col"><section class="panel"><div class="panel-heading"><h2>${Number(month.slice(0,4))}年 ${Number(month.slice(5))}月</h2><div class="row">${btn('previous-month','前月','','ghost')}${btn('next-month','翌月','','ghost')}</div></div><div class="calendar">${['月','火','水','木','金','土','日'].map(d=>`<div class="weekday">${d}</div>`).join('')}${Array.from({length:42},(_,i)=>{const d=C.shiftDay(gridStart,i),st=C.workoutStats(state.workouts[d]);return `<button class="calendar-day ${d.slice(0,7)===month?'':'outside'} ${d===day?'active':''}" data-action="history-date" data-date="${d}" aria-label="${dateLabel(d)}、完了した記録${st.sets}件、食事${(state.meals[d]??[]).length}件"><span>${C.parseDay(d).getDate()}</span><span class="day-marks">${st.sets?'<span></span>':''}${(state.meals[d]??[]).length?'<span class="food-dot"></span>':''}</span></button>`;}).join('')}</div><div class="history-calendar-footer"><span class="small">● トレーニング　○ 食事記録</span>${btn('share-month','月間まとめをシェア','share','primary')}</div></section><div class="section-heading"><h2>最近のトレーニング</h2><span class="small">タップして確認・訂正</span></div><section class="panel">${dates.length?dates.map(historyItem).join(''):'<div class="empty">まだ記録がありません。</div>'}</section></section><aside class="side-col"><section class="panel"><div class="panel-heading"><h2>${Number(month.slice(5))}月の記録</h2>${icon('calendar')}</div><div class="stat-line"><span>トレーニングした日</span><strong>${summary.trainingDays} 日</strong></div><div class="stat-line"><span>筋トレ完了セット</span><strong>${summary.strengthSets} セット</strong></div><div class="stat-line"><span>自己ベスト更新</span><strong>${summary.updatedExercises} 種目</strong></div>${monthlyCardioRows(summary).map(row=>`<div class="stat-line"><span>${h(row.label)}</span><strong>${h(row.value)}</strong></div>`).join('')}<div class="stat-line"><span>食事を記録した日</span><strong>${summary.mealDays} 日</strong></div></section>${highlightPanel(C.records(state))}</aside></div>`;}
+  const bodyCounts=new Map();
+  for(const entry of state.body)bodyCounts.set(entry.date,(bodyCounts.get(entry.date)??0)+1);
+  const cells=Array.from({length:42},(_,i)=>{
+    const date=C.shiftDay(gridStart,i);
+    return renderCalendarDay(date,bodyCounts.get(date)??0);
+  }).join('');
+  return `<div class="layout"><section class="main-col"><section class="panel"><div class="panel-heading"><h2>${Number(month.slice(0,4))}年 ${Number(month.slice(5))}月</h2><div class="row">${btn('previous-month','前月','','ghost')}${btn('next-month','翌月','','ghost')}</div></div><div class="calendar">${['月','火','水','木','金','土','日'].map(d=>`<div class="weekday">${d}</div>`).join('')}${cells}</div><div class="history-calendar-footer"><span class="small">● トレーニング　○ 食事記録　■ 体重</span>${btn('share-month','月間まとめをシェア','share','primary')}</div></section><div class="section-heading"><h2>最近のトレーニング</h2><span class="small">タップして確認・訂正</span></div><section class="panel">${dates.length?dates.map(historyItem).join(''):'<div class="empty">まだ記録がありません。</div>'}</section></section><aside class="side-col"><section class="panel"><div class="panel-heading"><h2>${Number(month.slice(5))}月の記録</h2>${icon('calendar')}</div><div class="stat-line"><span>トレーニングした日</span><strong>${summary.trainingDays} 日</strong></div><div class="stat-line"><span>筋トレ完了セット</span><strong>${summary.strengthSets} セット</strong></div><div class="stat-line"><span>自己ベスト更新</span><strong>${summary.updatedExercises} 種目</strong></div>${monthlyCardioRows(summary).map(row=>`<div class="stat-line"><span>${h(row.label)}</span><strong>${h(row.value)}</strong></div>`).join('')}<div class="stat-line"><span>食事を記録した日</span><strong>${summary.mealDays} 日</strong></div></section>${highlightPanel(C.records(state))}</aside></div>`;}
 
 function openDialog(title,body,subtitle=''){modal.innerHTML=`<header class="modal-head"><div>${subtitle?`<div class="eyebrow">${h(subtitle)}</div>`:''}<h2 id="modal-title">${h(title)}</h2></div>${ib('close','閉じる','close')}</header><div class="modal-content">${body}</div>`;modal.onsubmit=null;if(!modal.open)modal.showModal();modal.scrollTop=0;}
 const inputField=(name,label,value='',attrs='',cls='')=>`<div class="field ${cls}"><label for="field-${name}">${h(label)}</label><input id="field-${name}" name="${name}" value="${h(value)}" ${attrs}></div>`;
@@ -1316,7 +1375,8 @@ async function handleAction(d){try{switch(d.action){
   }
   case 'today':day=today;render();break;
   case 'day':day=d.date;render();break;
-  case 'history-date':day=d.date;view='workout';render();window.scrollTo({top:0,behavior:'instant'});break;
+  case 'calendar-date':openCalendarDay(d.date);break;
+  case 'history-date':openHistoryRecord(d.date,d.view??'workout');break;
   case 'previous-month':case 'next-month':{const dt=C.parseDay(month+'-01');dt.setMonth(dt.getMonth()+(d.action==='next-month'?1:-1));month=C.localDate(dt).slice(0,7);render();break;}
   case 'close':modal.close();break;
   case 'settings':settingsDialog();break;
