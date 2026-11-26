@@ -462,7 +462,11 @@ function renderStrengthTable(inst,ex,last,prs,u){
     const sameKind = previousByKind[s.kind];
     const prev = sameKind[nextIndex[s.kind]++];
     const isPR = prs[ex.id]?.id === s.id;
-    return `<div class="set-grid set-row ${s.completed?'done':''}"><div class="set-num">${s.kind==='warmup'?'W':i+1}${isPR?icon('crown','tiny-crown'):s.assisted?'<span class="small">補</span>':''}</div><div class="previous ${last?'has-previous':''}">${last?'<span class="previous-label">前回 </span>':''}${prev?`${weight(prev.kg,u)} × ${prev.reps}`:'—'}</div><select aria-label="${h(ex.name)} セット${i+1}の重量（${u}）" data-change="set-weight" data-exercise="${h(ex.id)}" data-load="${ex.load}" data-id="${h(s.id)}">${weightOptions(s,sameKind,ex)}</select><select aria-label="${h(ex.name)} セット${i+1}の回数" data-change="set-reps" data-id="${h(s.id)}">${options([...new Set([...Array.from({length:30},(_,i)=>i+1),40,50,60,100,s.reps])].sort((a,b)=>a-b),s.reps,n=>n,'<option value="custom">直接入力…</option>')}</select><button class="complete-check ${s.completed?'checked':''}" data-action="complete-set" data-id="${h(s.id)}" data-exercise="${h(ex.id)}" aria-label="${h(ex.name)} セット${i+1}を${s.completed?'未完了にする':'完了にする'}" aria-pressed="${s.completed}">${icon('check')}</button>${ib('copy-set',`${ex.name} セット${i+1}をコピー`,'copy',`data-id="${h(s.id)}" data-instance="${h(inst.id)}"`)}${ib('edit-set',`${ex.name} セット${i+1}の詳細を編集`,'more',`data-id="${h(s.id)}"`)}${ib('delete-set',`${ex.name} セット${i+1}を削除`,'trash',`data-id="${h(s.id)}" data-date="${day}"`)}</div>`;
+    const warmup = s.kind === 'warmup';
+    const kindButton = `<button type="button" class="set-num" data-action="toggle-set-kind" data-id="${h(s.id)}"
+      aria-label="${h(ex.name)} セット${i+1}のウォームアップ" aria-pressed="${warmup}"
+      title="${warmup?'メインセットに切り替える':'ウォームアップに切り替える'}">${warmup?'W':i+1}${isPR?icon('crown','tiny-crown'):s.assisted?'<span class="small">補</span>':''}</button>`;
+    return `<div class="set-grid set-row ${s.completed?'done':''}">${kindButton}<div class="previous ${last?'has-previous':''}">${last?'<span class="previous-label">前回 </span>':''}${prev?`${weight(prev.kg,u)} × ${prev.reps}`:'—'}</div><select aria-label="${h(ex.name)} セット${i+1}の重量（${u}）" data-change="set-weight" data-exercise="${h(ex.id)}" data-load="${ex.load}" data-id="${h(s.id)}">${weightOptions(s,sameKind,ex)}</select><select aria-label="${h(ex.name)} セット${i+1}の回数" data-change="set-reps" data-id="${h(s.id)}">${options([...new Set([...Array.from({length:30},(_,i)=>i+1),40,50,60,100,s.reps])].sort((a,b)=>a-b),s.reps,n=>n,'<option value="custom">直接入力…</option>')}</select><button class="complete-check ${s.completed?'checked':''}" data-action="complete-set" data-id="${h(s.id)}" data-exercise="${h(ex.id)}" aria-label="${h(ex.name)} セット${i+1}を${s.completed?'未完了にする':'完了にする'}" aria-pressed="${s.completed}">${icon('check')}</button>${ib('copy-set',`${ex.name} セット${i+1}をコピー`,'copy',`data-id="${h(s.id)}" data-instance="${h(inst.id)}"`)}${ib('edit-set',`${ex.name} セット${i+1}の詳細を編集`,'more',`data-id="${h(s.id)}"`)}${ib('delete-set',`${ex.name} セット${i+1}を削除`,'trash',`data-id="${h(s.id)}" data-date="${day}"`)}</div>`;
   }).join('')}</div>`;
 }
 function renderExercise(inst,prs){const ex=exercise(inst.exerciseId),last=C.lastExercise(state,ex.id,day),u=exerciseUnit(ex.id);return `<article class="exercise-card" id="exercise-${h(inst.id)}"><div class="exercise-head"><div class="row"><div class="badge-icon">${icon(ex.load==='cardio'?'heart':'dumbbell')}</div><div><div class="exercise-title">${h(ex.name)}</div><div class="exercise-sub">${h(ex.group)} · ${h(ex.equipment)} · ${h(loadLabel(ex))}</div></div></div><div class="exercise-tools">${ib('favorite',state.favorites.includes(ex.id)?'お気に入りから外す':'お気に入りに追加','star',`data-id="${h(ex.id)}"`,state.favorites.includes(ex.id)?'active':'')}${ib('exercise-menu','種目の編集・削除','more',`data-id="${h(inst.id)}"`)}</div></div>${ex.load==='cardio'?renderCardioTable(inst,ex,last):renderStrengthTable(inst,ex,last,prs,u)}<div class="exercise-footer">
@@ -1327,7 +1331,7 @@ async function shareNative(){if(!shareBlob){toast('画像を準備中です。�
 const recordActions=new Set([
   'template-save','template-delete',
   'save-note-draft',
-  'favorite','picker-favorite','choose-exercise','use-routine','delete-routine','add-set','add-three-sets','copy-set','complete-set',
+  'favorite','picker-favorite','choose-exercise','use-routine','delete-routine','add-set','add-three-sets','copy-set','complete-set','toggle-set-kind',
   'delete-set','delete-exercise','copy-exercise-previous','copy-previous','copy-food','copy-food-day','delete-food',
   'delete-saved-food','delete-plan','delete-body','start-timer','pause-timer','reset-timer','close-timer','confirm-import','undo',
   'unit','switch-mode','start-real'
@@ -1406,6 +1410,15 @@ async function handleAction(d){try{switch(d.action){
     break;
   }
   case 'copy-set':{const e=instance(d.instance),s=setById(d.id);if(!e||!s)return;const idx=e.sets.findIndex(x=>x.id===s.id);const copy=C.cloneSet(s);e.sets.splice(idx+1,0,copy);if(commit('同じセットをコピーしました'))focusSet(copy.id,'set-weight',true);break;}
+  case 'toggle-set-kind':{
+    const set=setById(d.id);
+    if(!set || !Object.hasOwn(set,'kind'))break;
+    set.kind=set.kind==='work'?'warmup':'work';
+    if(commit(set.kind==='warmup'?'ウォームアップに変更しました':'メインセットに変更しました')){
+      app.querySelector(`[data-action="toggle-set-kind"][data-id="${CSS.escape(d.id)}"]`)?.focus({preventScroll:true});
+    }
+    break;
+  }
   case 'complete-set':{
     const set=setById(d.id);
     if(!set)break;

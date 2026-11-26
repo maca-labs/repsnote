@@ -893,7 +893,7 @@ a {
 
 .set-grid {
   display: grid;
-  grid-template-columns: 31px 74px minmax(75px,1fr) 73px 40px repeat(3,40px);
+  grid-template-columns: 44px 74px minmax(75px,1fr) 73px 40px repeat(3,40px);
   align-items: center;
   column-gap: 9px;
   min-height: 55px;
@@ -956,10 +956,29 @@ a {
 }
 
 .set-row .set-num {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  width: 100%;
+  min-height: 44px;
+  padding: 2px;
+  border: 1px solid #bdbdbd;
+  border-radius: 5px;
+  background: #fff;
+  color: var(--ink);
   font-size: 14px;
-  text-align: center;
-  color: var(--muted);
-  position: relative;
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+.set-num[aria-pressed="true"] {
+  background: #292929;
+  color: #fff;
+  border-color: #292929;
+}
+
+.set-num .small {
+  color: inherit;
 }
 
 .set-num .tiny-crown {
@@ -2367,7 +2386,7 @@ dialog:has(#exercise-timer) { width: 420px; }
     padding: 26px;
   }
   .set-grid {
-    grid-template-columns: 35px 95px minmax(90px,1fr) 95px 44px repeat(3,44px);
+    grid-template-columns: 44px 95px minmax(90px,1fr) 95px 44px repeat(3,44px);
     column-gap: 14px;
   }
 }
@@ -2391,7 +2410,7 @@ dialog:has(#exercise-timer) { width: 420px; }
     gap: 19px;
   }
   .set-grid {
-    grid-template-columns: 26px 57px minmax(69px,1fr) 65px 40px repeat(3,36px);
+    grid-template-columns: 44px 57px minmax(69px,1fr) 65px 40px repeat(3,36px);
     column-gap: 6px;
   }
   .set-table {
@@ -2438,7 +2457,7 @@ dialog:has(#exercise-timer) { width: 420px; }
     height: 100px;
   }
   .set-grid {
-    grid-template-columns: 26px 68px minmax(70px,1fr) 66px 40px repeat(3,36px);
+    grid-template-columns: 44px 68px minmax(70px,1fr) 66px 40px repeat(3,36px);
     column-gap: 7px;
   }
   .set-table {
@@ -2668,8 +2687,8 @@ dialog:has(#exercise-timer) { width: 420px; }
     padding: 0 13px;
   }
   .set-grid {
-    grid-template-columns: 22px minmax(64px,1fr) 60px 40px repeat(3,36px);
-    column-gap: 5px;
+    grid-template-columns: 44px minmax(64px,1fr) 60px 40px repeat(3,36px);
+    column-gap: 4px;
   }
   .set-grid .previous {
     display: none;
@@ -2957,7 +2976,7 @@ dialog:has(#exercise-timer) { width: 420px; }
 
 @media (max-width:400px) {
   .set-grid {
-    grid-template-columns: 22px minmax(0,1fr) 62px 44px 44px;
+    grid-template-columns: 44px minmax(0,1fr) 62px 44px 44px;
     column-gap: 5px;
   }
   .set-grid.labels > :nth-last-child(-n+2) {
